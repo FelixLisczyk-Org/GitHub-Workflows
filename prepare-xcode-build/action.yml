@@ -2,15 +2,15 @@ name: Prepare Xcode Build
 description: Prepare Xcode Build
 inputs:
   p12-file-development:
-    description: "Development Certificate File"
+    description: "Development Certificate File (required for dev and release builds)"
   p12-file-development-password:
-    description: "Development Certificate Password"
+    description: "Development Certificate Password (required for dev and release builds)"
   p12-file-distribution:
-    description: "Distribution Certificate File"
+    description: "Distribution Certificate File (required for release builds)"
   p12-file-distribution-password:
-    description: "Distribution Certificate Password"
+    description: "Distribution Certificate Password (required for release builds)"
   ssh-private-key:
-    description: "Private SSH Key"
+    description: "Private SSH Key (required for cloud runner)"
 runs:
   using: "composite"
   steps:
