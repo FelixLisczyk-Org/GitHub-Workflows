@@ -20,7 +20,7 @@ runs:
       uses: maxim-lobanov/setup-xcode@v1
       with:
         xcode-version: latest-stable
-      if: contains('/home/runner', runner.temp)
+      if: contains(runner.workspace, '/Users/runner/')
     - name: Import Development Certificate
       id: create_keychain
       uses: apple-actions/import-codesign-certs@v1
@@ -40,14 +40,14 @@ runs:
       uses: webfactory/ssh-agent@v0.5.4
       with:
         ssh-private-key: ${{ inputs.ssh-private-key }}
-      if: contains('/home/runner', runner.temp) && inputs.ssh-private-key != ''
+      if: contains(runner.workspace, '/Users/runner/') && inputs.ssh-private-key != ''
     - name: Clone Swift Packages over SSH
       run: git config --global url."git@github.com:".insteadOf "https://github.com/"
       shell: bash
     - name: (Cloud) Install Build Tools
       run: brew update && brew install mint swiftformat swiftgen && echo "$HOME/.mint/bin" >> $GITHUB_PATH && mint install yonaskolb/xcodegen@2.32.0
       shell: bash
-      if: contains('/home/runner', runner.temp)
+      if: contains(runner.workspace, '/Users/runner/')
     - name: Install fastlane
       run: bundle install
       shell: bash

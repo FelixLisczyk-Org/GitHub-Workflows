@@ -6,13 +6,13 @@ runs:
     - name: (Cloud) On Failure - Zip Workspace
       run: zip -r -q workspace.zip .
       shell: bash
-      if: job.status == 'failure' && contains('/home/runner', runner.temp)
+      if: job.status == 'failure' && contains(runner.workspace, '/Users/runner/')
     - name: (Cloud) On Failure - Upload Workspace as Build Artifact
       uses: actions/upload-artifact@v3
       with:
         name: workspace
         path: workspace.zip
-      if: job.status == 'failure' && contains('/home/runner', runner.temp)
+      if: job.status == 'failure' && contains(runner.workspace, '/Users/runner/')
     - name: Cleanup Temporary Keychain Entry
       run: security delete-keychain signing_temp.keychain
       shell: bash
