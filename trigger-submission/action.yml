@@ -1,0 +1,19 @@
+name: Trigger Submission Workflow
+description: Trigger Submission Workflow
+inputs:
+  token:
+    description: "Repo Access Token"
+    required: true
+  delay:
+    description: "Delay"
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - name: Trigger Submission Workflow
+      uses: peter-evans/repository-dispatch@v2
+      with:
+        token: ${{ inputs.token }}
+        repository: FelixLisczyk-Org/Workflow-Scheduler
+        event-type: wait-and-callback
+        client-payload: '{"repo": "${{ github.repository }}", "event_type": "submit-build", "delay": "${{ inputs.delay }}"}'

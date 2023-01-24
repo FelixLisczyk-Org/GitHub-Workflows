@@ -3,19 +3,14 @@ description: Prepare Xcode Build
 inputs:
   p12-file-development:
     description: "Development Certificate File"
-    required: true
   p12-file-development-password:
     description: "Development Certificate Password"
-    required: true
   p12-file-distribution:
     description: "Distribution Certificate File"
-    required: true
   p12-file-distribution-password:
     description: "Distribution Certificate Password"
-    required: true
   ssh-private-key:
     description: "Private SSH Key"
-    required: true
 runs:
   using: "composite"
   steps:
@@ -32,6 +27,7 @@ runs:
       with:
         p12-file-base64: ${{ inputs.p12-file-development }}
         p12-password: ${{ inputs.p12-file-development-password }}
+      if: inputs.p12-file-development != '' && inputs.p12-file-development-password != ''
     - name: Import Distribution Certificate
       uses: apple-actions/import-codesign-certs@v1
       with:
@@ -39,18 +35,15 @@ runs:
         keychain-password: "${{ steps.create_keychain.outputs.keychain-password }}"
         p12-file-base64: ${{ inputs.p12-file-distribution }}
         p12-password: ${{ inputs.p12-file-distribution-password }}
+      if: inputs.p12-file-distribution != '' && inputs.p12-file-distribution-password != ''
     - name: (Cloud) Load SSH Private Key
       uses: webfactory/ssh-agent@v0.5.4
       with:
         ssh-private-key: ${{ inputs.ssh-private-key }}
-      if: contains('/home/runner', runner.temp)
+      if: contains('/home/runner', runner.temp) && inputs.ssh-private-key != ''
     - name: Clone Swift Packages over SSH
       run: git config --global url."git@github.com:".insteadOf "https://github.com/"
       shell: bash
-    - name: (Local) Clear Xcode Cache # Avoid outdated Swift Package dependencies
-      run: rm -rf ~/Library/Developer/Xcode/DerivedData/
-      shell: bash
-      if: "!contains('/home/runner', runner.temp)"
     - name: (Cloud) Install Build Tools
       run: brew update && brew install mint swiftformat swiftgen && echo "$HOME/.mint/bin" >> $GITHUB_PATH && mint install yonaskolb/xcodegen@2.32.0
       shell: bash

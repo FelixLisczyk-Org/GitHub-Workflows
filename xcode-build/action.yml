@@ -1,0 +1,21 @@
+name: Xcode Build
+description: Xcode Build
+inputs:
+  inc-version:
+    description: "Increment Version Number"
+    required: true
+  inc-build:
+    description: "Increment Build Number"
+    required: true
+  update-deps:
+    description: "Update Dependencies"
+    required: true
+  skip-tests:
+    description: "Skip Tests"
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - name: Build and Upload App
+      run: fastlane release inc_version:${{ inputs.inc-version }} inc_build:${{ inputs.inc-build }} update_deps:${{ inputs.update-deps }} skip_publish:true skip_tests:${{ inputs.skip-tests }} clear_artifacts:false
+      shell: bash
