@@ -48,6 +48,12 @@ runs:
       run: brew update && brew install mint swiftformat swiftgen && echo "$HOME/.mint/bin" >> $GITHUB_PATH && mint install yonaskolb/xcodegen@2.32.0
       shell: bash
       if: contains(runner.workspace, '/Users/runner/')
+    - name: Check if Gemfile exists
+      id: check_files
+      uses: andstor/file-existence-action@v2
+      with:
+        files: "Gemfile"
     - name: Install fastlane
       run: bundle install
       shell: bash
+      if: steps.check_files.outputs.files_exists == 'true'
