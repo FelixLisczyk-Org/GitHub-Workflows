@@ -1,0 +1,23 @@
+name: Xcode Build Swift Package
+description: Xcode Build Swift Package
+inputs:
+  platform:
+    description: "Target Build Platform"
+    default: "ios"
+runs:
+  using: "composite"
+  steps:
+    - name: Generate Xcode Project
+      run: xcodegen
+      shell: bash
+    - name: Resolve Swift Packages
+      run: xcodebuild -resolvePackageDependencies
+      shell: bash
+    - name: Run Unit Tests (iOS)
+      run: xcodebuild -scheme HostApp -destination 'platform=iOS Simulator,name=iPhone 14 Pro' test
+      shell: bash
+      if: inputs.platform == 'ios'
+    - name: Run Unit Tests (macOS)
+      run: xcodebuild -scheme HostApp -sdk macosx test -allowProvisioningUpdates
+      shell: bash
+      if: inputs.platform == 'mac'

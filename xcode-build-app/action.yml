@@ -1,5 +1,5 @@
-name: Xcode Build
-description: Xcode Build
+name: Xcode Build App
+description: Xcode Build App
 inputs:
   platform:
     description: "Target Build Platform"
