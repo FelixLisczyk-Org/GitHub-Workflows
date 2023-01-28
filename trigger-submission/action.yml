@@ -19,4 +19,4 @@ runs:
         token: ${{ inputs.token }}
         repository: FelixLisczyk-Org/Workflow-Scheduler
         event-type: wait-and-callback
-        client-payload: '{"repo": "${{ github.repository }}", "event_type": "submit-build", "delay": "${{ inputs.delay }}, "platform": "${{ inputs.platform }}"}'
+        client-payload: '{"repo": "${{ github.repository }}", "event_type": "submit-build", "delay": "${{ inputs.delay }}", "platform": "${{ inputs.platform }}"}'
