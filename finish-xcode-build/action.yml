@@ -14,6 +14,7 @@ runs:
         path: workspace.zip
       if: job.status == 'failure' && contains(runner.workspace, '/Users/runner/')
     - name: Cleanup Temporary Keychain Entry
+      continue-on-error: true
       run: security delete-keychain signing_temp.keychain
       shell: bash
       if: always()
