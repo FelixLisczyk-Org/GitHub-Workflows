@@ -20,5 +20,19 @@ runs:
   using: "composite"
   steps:
     - name: Build and Upload App
+      id: build-app
+      continue-on-error: true
       run: bundle exec fastlane ${{ inputs.platform }} release inc_version:${{ inputs.inc-version }} inc_build:${{ inputs.inc-build }} update_deps:${{ inputs.update-deps }} skip_publish:true skip_tests:${{ inputs.skip-tests }} clear_artifacts:false
       shell: bash
+    - name: Analyze Build Errors
+      run: python3 ${{ github.action_path }}/scripts/check-build-errors.py
+      shell: bash
+      if: ${{ steps.build-app.outcome == 'failure' }}
+    - name: Build and Upload App (Retry)
+      run: bundle exec fastlane ${{ inputs.platform }} release inc_version:false inc_build:false update_deps:false skip_publish:true skip_tests:${{ inputs.skip-tests }} clear_artifacts:false
+      shell: bash
+      if: ${{ steps.build-app.outcome == 'failure' && env.RETRY_BUILD == 'true' }}
+    - name: Abort Workflow (Non-recoverable build error)
+      run: exit 1
+      shell: bash
+      if: ${{ steps.build-app.outcome == 'failure' && env.RETRY_BUILD != 'true' }}
