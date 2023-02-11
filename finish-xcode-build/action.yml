@@ -5,7 +5,7 @@ runs:
   steps:
     - name: (Cloud) On Failure - Zip Workspace
       run: zip -r -q workspace.zip .
-      shell: bash
+      shell: bash -leo pipefail {0}
       if: job.status == 'failure' && contains(runner.workspace, '/Users/runner/')
     - name: (Cloud) On Failure - Upload Workspace as Build Artifact
       uses: actions/upload-artifact@v3
@@ -16,9 +16,9 @@ runs:
     - name: Cleanup Temporary Keychain Entry
       continue-on-error: true
       run: security delete-keychain signing_temp.keychain
-      shell: bash
+      shell: bash -leo pipefail {0}
       if: always()
     - name: Revert Git SSH Redirect
       run: git config --global --unset url."git@github.com:".insteadOf "https://github.com/"
-      shell: bash
+      shell: bash -leo pipefail {0}
       if: always()

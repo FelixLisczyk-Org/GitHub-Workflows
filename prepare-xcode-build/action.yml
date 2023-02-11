@@ -43,10 +43,10 @@ runs:
       if: contains(runner.workspace, '/Users/runner/') && inputs.ssh-private-key != ''
     - name: Clone Swift Packages over SSH
       run: git config --global url."git@github.com:".insteadOf "https://github.com/"
-      shell: bash
+      shell: bash -leo pipefail {0}
     - name: (Cloud) Install Build Tools
       run: brew update && brew install mint sourcery swiftformat swiftgen && echo "$HOME/.mint/bin" >> $GITHUB_PATH && mint install yonaskolb/xcodegen@2.32.0
-      shell: bash
+      shell: bash -leo pipefail {0}
       if: contains(runner.workspace, '/Users/runner/')
     - name: Check if Gemfile exists
       id: check_files
@@ -55,5 +55,5 @@ runs:
         files: "Gemfile"
     - name: Install fastlane
       run: bundle install
-      shell: bash
+      shell: bash -leo pipefail {0}
       if: steps.check_files.outputs.files_exists == 'true'

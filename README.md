@@ -5,6 +5,7 @@ This repository contains reusable workflows and composite actions for other repo
 # Caveats
 
 * Use `if: job.status == 'failure'` instead of `if: failure()` in composite actions to read the global job status.
+* Run bash scripts with a login shell to load `.bash_profile`: `shell: bash -leo pipefail {0}`
 
 # Debug
 
