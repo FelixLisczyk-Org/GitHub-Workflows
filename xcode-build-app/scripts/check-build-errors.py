@@ -6,7 +6,11 @@ This allows CI builds to determine if a build should be retried.
 
 import os
 
-retry_errors = ["The Xcode build system has crashed", "Command CodeSign failed with a nonzero exit code"]
+retry_errors = [
+    "The Xcode build system has crashed",
+    "Command CodeSign failed with a nonzero exit code",
+    "The test runner failed to initialize for UI testing",
+]
 
 for log_file_name in os.listdir("log"):
     if ".log" in log_file_name:
