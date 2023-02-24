@@ -45,7 +45,7 @@ runs:
       run: git config --global url."git@github.com:".insteadOf "https://github.com/"
       shell: bash -leo pipefail {0}
     - name: (Cloud) Install Build Tools
-      run: brew update && brew install mint sourcery swiftformat swiftgen && echo "$HOME/.mint/bin" >> $GITHUB_PATH && mint install yonaskolb/xcodegen@2.32.0
+      run: brew update && brew install mint sourcery swiftformat swiftgen swiftlint && echo "$HOME/.mint/bin" >> $GITHUB_PATH && mint install yonaskolb/xcodegen@2.32.0
       shell: bash -leo pipefail {0}
       if: contains(runner.workspace, '/Users/runner/')
     - name: Check if Gemfile exists
