@@ -44,7 +44,12 @@ runs:
     - name: Clone Swift Packages over SSH
       run: git config --global url."git@github.com:".insteadOf "https://github.com/"
       shell: bash -leo pipefail {0}
-    - name: Cache Mint Build Folder
+      # This step is required for the cache actions to find the `zstd` executable in the Homebrew directory.
+    - name: (Local) Add PATH to GITHUB_PATH
+      run: echo $PATH >> $GITHUB_PATH
+      shell: bash -leo pipefail {0}
+      if: contains(runner.workspace, '/Users/runner/') == false
+    - name: (Cloud) Cache Mint Build Folder
       uses: actions/cache@v3
       with:
         path: ~/.mint
