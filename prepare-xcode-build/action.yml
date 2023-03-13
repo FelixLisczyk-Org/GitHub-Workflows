@@ -37,7 +37,7 @@ runs:
         p12-password: ${{ inputs.p12-file-distribution-password }}
       if: inputs.p12-file-distribution != '' && inputs.p12-file-distribution-password != ''
     - name: (Cloud) Load SSH Private Key
-      uses: webfactory/ssh-agent@v0.5.4
+      uses: webfactory/ssh-agent@v0.7.0
       with:
         ssh-private-key: ${{ inputs.ssh-private-key }}
       if: contains(runner.workspace, '/Users/runner/') && inputs.ssh-private-key != ''
