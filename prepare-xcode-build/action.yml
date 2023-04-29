@@ -49,14 +49,8 @@ runs:
       run: echo $PATH >> $GITHUB_PATH
       shell: bash -leo pipefail {0}
       if: contains(runner.workspace, '/Users/runner/') == false
-    - name: (Cloud) Cache Mint Build Folder
-      uses: actions/cache@v3
-      with:
-        path: ~/.mint
-        key: ${{ runner.os }}-mint
-      if: contains(runner.workspace, '/Users/runner/')
     - name: (Cloud) Install Build Tools
-      run: brew install mint sourcery swiftgen && echo "$HOME/.mint/bin" >> $GITHUB_PATH && mint install yonaskolb/xcodegen@2.32.0
+      run: brew install sourcery swiftgen xcodegen
       shell: bash -leo pipefail {0}
       if: contains(runner.workspace, '/Users/runner/')
     - name: Check if Gemfile exists
