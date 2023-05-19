@@ -2,13 +2,16 @@ name: Trigger Submission Workflow
 description: Trigger Submission Workflow
 inputs:
   platform:
-    description: "Target Build Platform"
+    description: "Target Build Platform (`ios` or `mac`)"
     default: "ios"
+  destination:
+    description: "Destination (`app-store` or `testflight`)"
+    default: "app-store"
   token:
     description: "Repo Access Token"
     required: true
   delay:
-    description: "Delay"
+    description: "Delay (e.g. 30m)"
     required: true
 runs:
   using: "composite"
@@ -19,4 +22,4 @@ runs:
         token: ${{ inputs.token }}
         repository: FelixLisczyk-Org/Workflow-Scheduler
         event-type: wait-and-callback
-        client-payload: '{"repo": "${{ github.repository }}", "event_type": "submit-build", "delay": "${{ inputs.delay }}", "platform": "${{ inputs.platform }}"}'
+        client-payload: '{"repo": "${{ github.repository }}", "event_type": "submit-${{ inputs.destination }}", "delay": "${{ inputs.delay }}", "platform": "${{ inputs.platform }}"}'
