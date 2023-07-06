@@ -4,6 +4,9 @@ inputs:
   platform:
     description: "Target Build Platform"
     default: "ios"
+  lane:
+    description: "Fastlane Lane Name"
+    default: "release"
   inc-version:
     description: "Increment Version Number"
     required: true
@@ -22,7 +25,7 @@ runs:
     - name: Build and Upload App
       id: build-app
       continue-on-error: true
-      run: bundle exec fastlane ${{ inputs.platform }} release inc_version:${{ inputs.inc-version }} inc_build:${{ inputs.inc-build }} update_deps:${{ inputs.update-deps }} skip_publish:true skip_tests:${{ inputs.skip-tests }} clear_artifacts:false
+      run: bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} inc_version:${{ inputs.inc-version }} inc_build:${{ inputs.inc-build }} update_deps:${{ inputs.update-deps }} skip_publish:true skip_tests:${{ inputs.skip-tests }} clear_artifacts:false
       shell: bash -leo pipefail {0}
     - name: Analyze Build Errors
       run: python3 ${{ github.action_path }}/scripts/check-build-errors.py
