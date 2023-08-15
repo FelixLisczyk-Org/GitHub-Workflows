@@ -1,0 +1,21 @@
+name: Xcode Run Unit Tests in Package
+description: Xcode Run Unit Tests in Package
+inputs:
+  platform:
+    description: "Target Build Platform"
+    default: "ios"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Generate Xcode Project
+      run: xcodegen
+      shell: bash -leo pipefail {0}
+    - name: Run Unit Tests (iOS)
+      run: xcodebuild -scheme HostApp -destination 'platform=iOS Simulator,name=iPhone 14 Pro' test
+      shell: bash -leo pipefail {0}
+      if: inputs.platform == 'ios'
+    - name: Run Unit Tests (macOS)
+      run: xcodebuild -scheme HostApp -sdk macosx test -allowProvisioningUpdates
+      shell: bash -leo pipefail {0}
+      if: inputs.platform == 'mac'

@@ -24,14 +24,10 @@ runs:
         rm -rf ~/Library/org.swift.swiftpm
         xcodebuild -resolvePackageDependencies
       shell: bash -leo pipefail {0}
-    - name: Run Unit Tests (iOS)
-      run: xcodebuild -scheme HostApp -destination 'platform=iOS Simulator,name=iPhone 14 Pro' test
-      shell: bash -leo pipefail {0}
-      if: inputs.platform == 'ios'
-    - name: Run Unit Tests (macOS)
-      run: xcodebuild -scheme HostApp -sdk macosx test -allowProvisioningUpdates
-      shell: bash -leo pipefail {0}
-      if: inputs.platform == 'mac'
+    - name: Run Unit Tests
+      uses: FelixLisczyk-Org/GitHub-Workflows/xcode-test-package@main
+      with:
+        platform: ${{ inputs.platform }}
     - name: Commit & Push changes
       uses: actions-js/push@master
       with:
