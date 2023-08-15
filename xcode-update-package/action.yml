@@ -1,0 +1,39 @@
+name: Xcode Update Swift Package Dependencies
+description: Xcode Update Swift Package Dependencies
+inputs:
+  github-token:
+    description: "GitHub Access Token"
+  platform:
+    description: "Target Build Platform"
+    default: "ios"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Generate Xcode Project
+      run: xcodegen
+      shell: bash -leo pipefail {0}
+    - name: Update Swift Package Dependencies
+      run: swift package update
+      shell: bash -leo pipefail {0}
+    - name: Update Host App Dependencies
+      run: >
+        rm -rf *.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+        rm -rf ~/Library/Developer/Xcode/DerivedData/
+        rm -rf ~/Library/Caches/org.swift.swiftpm
+        rm -rf ~/Library/org.swift.swiftpm
+        xcodebuild -resolvePackageDependencies
+      shell: bash -leo pipefail {0}
+    - name: Run Unit Tests (iOS)
+      run: xcodebuild -scheme HostApp -destination 'platform=iOS Simulator,name=iPhone 14 Pro' test
+      shell: bash -leo pipefail {0}
+      if: inputs.platform == 'ios'
+    - name: Run Unit Tests (macOS)
+      run: xcodebuild -scheme HostApp -sdk macosx test -allowProvisioningUpdates
+      shell: bash -leo pipefail {0}
+      if: inputs.platform == 'mac'
+    - name: Commit & Push changes
+      uses: actions-js/push@master
+      with:
+        github_token: ${{ inputs.github-token }}
+        message: Updated dependencies [skip ci]
