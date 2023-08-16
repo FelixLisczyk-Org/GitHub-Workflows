@@ -17,11 +17,8 @@ runs:
       run: swift package update
       shell: bash -leo pipefail {0}
     - name: Update Host App Dependencies
-      run: >
-        rm -rf *.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
-        rm -rf ~/Library/Developer/Xcode/DerivedData/
-        rm -rf ~/Library/Caches/org.swift.swiftpm
-        rm -rf ~/Library/org.swift.swiftpm
+      run: |
+        ${{ github.action_path }}/scripts/clear-xcode-cache.sh
         xcodebuild -resolvePackageDependencies
       shell: bash -leo pipefail {0}
     - name: Run Unit Tests
