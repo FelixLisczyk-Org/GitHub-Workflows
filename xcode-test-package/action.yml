@@ -4,6 +4,9 @@ inputs:
   platform:
     description: "Target Build Platform"
     default: "ios"
+  scheme:
+    description: "Xcode Scheme Name"
+    default: "HostApp"
 
 runs:
   using: "composite"
@@ -12,10 +15,10 @@ runs:
       run: xcodegen
       shell: bash -leo pipefail {0}
     - name: Run Unit Tests (iOS)
-      run: xcodebuild -scheme HostApp -destination 'platform=iOS Simulator,name=iPhone 14 Pro' test
+      run: xcodebuild -scheme "${{ inputs.scheme }}" -destination 'platform=iOS Simulator,name=iPhone 14 Pro' test
       shell: bash -leo pipefail {0}
       if: inputs.platform == 'ios'
     - name: Run Unit Tests (macOS)
-      run: xcodebuild -scheme HostApp -sdk macosx test -allowProvisioningUpdates
+      run: xcodebuild -scheme ${{ inputs.scheme }} -sdk macosx test -allowProvisioningUpdates
       shell: bash -leo pipefail {0}
       if: inputs.platform == 'mac'

@@ -6,6 +6,9 @@ inputs:
   platform:
     description: "Target Build Platform"
     default: "ios"
+  scheme:
+    description: "Xcode Scheme Name"
+    default: "HostApp"
 
 runs:
   using: "composite"
@@ -25,6 +28,7 @@ runs:
       uses: FelixLisczyk-Org/GitHub-Workflows/xcode-test-package@main
       with:
         platform: ${{ inputs.platform }}
+        scheme: ${{ inputs.scheme }}
     - name: Commit & Push changes
       uses: actions-js/push@master
       with:
