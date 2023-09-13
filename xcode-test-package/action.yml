@@ -15,7 +15,7 @@ runs:
       run: xcodegen
       shell: bash -leo pipefail {0}
     - name: Run Unit Tests (iOS)
-      run: xcodebuild -scheme "${{ inputs.scheme }}" -destination 'platform=iOS Simulator,name=iPhone 14 Pro' test
+      run: xcodebuild -scheme "${{ inputs.scheme }}" -destination 'platform=iOS Simulator,name=iPhone 15 Pro' test
       shell: bash -leo pipefail {0}
       if: inputs.platform == 'ios'
     - name: Run Unit Tests (macOS)
