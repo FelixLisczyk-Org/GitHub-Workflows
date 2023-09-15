@@ -10,6 +10,7 @@ retry_errors = [
     "The Xcode build system has crashed",
     "Command CodeSign failed with a nonzero exit code",
     "The test runner failed to initialize for UI testing",
+    "** TEST INTERRUPTED **",
 ]
 
 for log_file_name in os.listdir("log"):
