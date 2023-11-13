@@ -21,6 +21,9 @@ runs:
       with:
         xcode-version: latest-stable
       if: contains(runner.workspace, '/Users/runner/')
+    - name: Allow Swift Macros to be executed
+      run: defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
+      shell: bash -leo pipefail {0}
     - name: Import Development Certificate
       id: create_keychain
       uses: apple-actions/import-codesign-certs@v2
