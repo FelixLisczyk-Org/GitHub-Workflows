@@ -3,10 +3,8 @@ description: Xcode Run Unit Tests in Package
 inputs:
   platform:
     description: "Target Build Platform"
-    default: "ios"
   scheme:
     description: "Xcode Scheme Name"
-    default: "HostApp"
 
 runs:
   using: "composite"
