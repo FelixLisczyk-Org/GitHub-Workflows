@@ -11,6 +11,7 @@ retry_errors = [
     "Command CodeSign failed with a nonzero exit code",
     "The test runner failed to initialize for UI testing",
     "** TEST INTERRUPTED **",
+    "Segmentation fault",
 ]
 
 for log_file_name in os.listdir("log"):
