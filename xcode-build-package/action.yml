@@ -5,6 +5,10 @@ inputs:
     description: "Target Build Platform"
   scheme:
     description: "Xcode Scheme Name"
+  retry_failed_tests:
+    description: "Retry Failed Tests"
+    required: false
+    default: false
 runs:
   using: "composite"
   steps:
@@ -19,3 +23,4 @@ runs:
       with:
         platform: ${{ inputs.platform }}
         scheme: ${{ inputs.scheme }}
+        retry_failed_tests: ${{ inputs.retry_failed_tests }}

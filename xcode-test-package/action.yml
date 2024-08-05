@@ -5,6 +5,10 @@ inputs:
     description: "Target Build Platform"
   scheme:
     description: "Xcode Scheme Name"
+  retry_failed_tests:
+    description: "Retry Failed Tests"
+    required: false
+    default: false
 
 runs:
   using: "composite"
@@ -13,10 +17,14 @@ runs:
       run: xcodegen
       shell: bash -leo pipefail {0}
     - name: Run Unit Tests (iOS)
-      run: xcodebuild -scheme '${{ inputs.scheme }}' -destination 'platform=iOS Simulator,name=iPhone 15 Pro' test
+      run: |
+        xcodebuild -scheme '${{ inputs.scheme }}' -destination 'platform=iOS Simulator,name=iPhone 15 Pro' test \
+        ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }}
       shell: bash -leo pipefail {0}
       if: inputs.platform == 'ios'
     - name: Run Unit Tests (macOS)
-      run: xcodebuild -scheme '${{ inputs.scheme }}' -sdk macosx test -allowProvisioningUpdates
+      run: |
+        xcodebuild -scheme '${{ inputs.scheme }}' -sdk macosx test -allowProvisioningUpdates \
+        ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }}
       shell: bash -leo pipefail {0}
       if: inputs.platform == 'mac'
