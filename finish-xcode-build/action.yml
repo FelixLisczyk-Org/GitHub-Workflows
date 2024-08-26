@@ -1,5 +1,9 @@
 name: Finish Xcode Build
 description: Finish Xcode Build
+inputs:
+  runner-root-password:
+    description: "Root password for sudo operations"
+    required: true
 runs:
   using: "composite"
   steps:
@@ -21,4 +25,10 @@ runs:
     - name: Revert Git SSH Redirect
       run: git config --global --unset url."git@github.com:".insteadOf "https://github.com/"
       shell: bash -leo pipefail {0}
+      if: always()
+    - name: (Local) Restore Xcode Version
+      uses: FelixLisczyk-Org/GitHub-Workflows/xcode-restore-version@main
+      with:
+        original-xcode-path: ${{ env.ORIGINAL_XCODE_PATH }}
+        runner-root-password: ${{ inputs.runner-root-password }}
       if: always()

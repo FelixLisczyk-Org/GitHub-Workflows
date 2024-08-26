@@ -11,12 +11,24 @@ inputs:
     description: "Distribution Certificate Password (required for release builds)"
   ssh-private-key:
     description: "Private SSH Key (required for cloud runner)"
+  runner-root-password:
+    description: "Root password for sudo operations"
+    required: true
 runs:
   using: "composite"
   steps:
     - name: Checkout
       uses: actions/checkout@v4
-    - name: (Cloud) Set Xcode Version
+    - name: (Local) Select Xcode Version
+      id: select-xcode
+      uses: FelixLisczyk-Org/GitHub-Workflows/xcode-select-version@main
+      with:
+        runner-root-password: ${{ inputs.runner-root-password }}
+    - name: (Local) Store Original Xcode Path # for later use in `finish-xcode-build`
+      run: echo "ORIGINAL_XCODE_PATH=${{ steps.select-xcode.outputs.original-xcode-path }}" >> $GITHUB_ENV
+      shell: bash -leo pipefail {0}
+      if: contains(runner.workspace, '/Users/runner/') == false
+    - name: (Cloud) Select Xcode Version
       uses: maxim-lobanov/setup-xcode@v1
       with:
         xcode-version: latest-stable

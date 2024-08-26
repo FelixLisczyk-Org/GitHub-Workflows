@@ -1,0 +1,36 @@
+name: Select Xcode Version
+description: Select the appropriate Xcode version based on the branch
+inputs:
+  runner-root-password:
+    description: "Root password for sudo operations"
+    required: true
+outputs:
+  original-xcode-path:
+    description: "The original Xcode path before selection"
+    value: ${{ steps.select-xcode.outputs.ORIGINAL_XCODE_PATH }}
+runs:
+  using: "composite"
+  steps:
+    - name: (Local) Select Xcode Version
+      id: select-xcode
+      run: |
+        # Save the current Xcode path
+        ORIGINAL_XCODE_PATH=$(xcode-select -p)
+        echo "ORIGINAL_XCODE_PATH=$ORIGINAL_XCODE_PATH" >> $GITHUB_OUTPUT
+
+        if [ "${{ github.ref }}" == "refs/heads/beta" ]; then
+          XCODE_PATH=$(ls -d /Applications/Xcode*Beta*.app | sort -V | tail -n 1)
+        else
+          XCODE_PATH=$(ls -d /Applications/Xcode*.app | grep -v "Beta" | sort -V | tail -n 1)
+        fi
+
+        if [ -z "$XCODE_PATH" ]; then
+          echo "Error: No suitable Xcode version found"
+          exit 1
+        fi
+
+        echo "Selected Xcode: $XCODE_PATH"
+        echo "${{ inputs.runner-root-password }}" | sudo -S xcode-select -s "$XCODE_PATH"
+        xcodebuild -version
+      shell: bash -leo pipefail {0}
+      if: contains(runner.workspace, '/Users/runner/') == false
