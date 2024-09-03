@@ -19,6 +19,8 @@ runs:
   steps:
     - name: Checkout
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # Required for scripts that access multiple branches, e.g. `increment-build-number.sh`
     - name: (Local) Select Xcode Version
       id: select-xcode
       uses: FelixLisczyk-Org/GitHub-Workflows/xcode-select-version@main
