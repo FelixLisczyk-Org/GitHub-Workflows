@@ -18,10 +18,15 @@ runs:
         ORIGINAL_XCODE_PATH=$(xcode-select -p)
         echo "ORIGINAL_XCODE_PATH=$ORIGINAL_XCODE_PATH" >> $GITHUB_OUTPUT
 
-        if [ "${{ github.ref }}" == "refs/heads/beta" ]; then
-          XCODE_PATH=$(ls -d /Applications/Xcode*Beta*.app | sort -V | tail -n 1)
+        # Check if beta Xcode is available
+        BETA_XCODE_PATH=$(ls -d /Applications/Xcode*Beta*.app 2>/dev/null | sort -V | tail -n 1 || echo "")
+
+        if [ "${{ github.ref }}" == "refs/heads/beta" ] && [ -n "$BETA_XCODE_PATH" ]; then
+          echo "Beta Xcode found: $BETA_XCODE_PATH"
+          XCODE_PATH=$BETA_XCODE_PATH
         else
           XCODE_PATH=$(ls -d /Applications/Xcode*.app | grep -v "Beta" | sort -V | tail -n 1)
+          echo "Stable Xcode found: $XCODE_PATH"
         fi
 
         if [ -z "$XCODE_PATH" ]; then
