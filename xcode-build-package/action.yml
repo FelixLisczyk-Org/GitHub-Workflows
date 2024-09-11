@@ -9,6 +9,7 @@ inputs:
     description: "Retry Failed Tests"
     required: false
     default: false
+
 runs:
   using: "composite"
   steps:
