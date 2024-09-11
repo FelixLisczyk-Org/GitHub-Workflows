@@ -7,6 +7,9 @@ inputs:
   destination:
     description: "Destination (`app-store` or `testflight`)"
     default: "app-store"
+  branch:
+    description: "Branch to trigger the submission from"
+    required: true
   token:
     description: "Repo Access Token"
     required: true
@@ -22,4 +25,4 @@ runs:
         token: ${{ inputs.token }}
         repository: FelixLisczyk-Org/Workflow-Scheduler
         event-type: wait-and-callback
-        client-payload: '{"repo": "${{ github.repository }}", "event_type": "submit-${{ inputs.destination }}", "delay": "${{ inputs.delay }}", "platform": "${{ inputs.platform }}"}'
+        client-payload: '{"repo": "${{ github.repository }}", "event_type": "submit-${{ inputs.destination }}", "delay": "${{ inputs.delay }}", "platform": "${{ inputs.platform }}", "branch": "${{ inputs.branch }}"}'
