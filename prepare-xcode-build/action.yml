@@ -2,9 +2,7 @@ name: Prepare Xcode Build
 description: Prepare Xcode Build
 inputs:
   branch:
-    description: "Branch to checkout"
-    default: "main"
-    required: true
+    description: "Custom ref/branch to check out (required for TestFlight submission workflow; defaults to the commit of the job that triggered this workflow)"
   p12-file-development:
     description: "Development Certificate File (required for dev and release builds)"
   p12-file-development-password:
@@ -25,7 +23,7 @@ runs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0 # Required for scripts that access multiple branches, e.g. `increment-build-number.sh`
-        ref: ${{ inputs.branch }}
+        ref: ${{ inputs.branch || '' }}
     - name: (Local) Select Xcode Version
       id: select-xcode
       uses: FelixLisczyk-Org/GitHub-Workflows/xcode-select-version@main
