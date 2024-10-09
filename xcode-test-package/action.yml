@@ -14,17 +14,28 @@ runs:
   using: "composite"
   steps:
     - name: Generate Xcode Project
-      run: xcodegen
+      run: |
+        if [ -f project.yml ]; then
+          xcodegen
+        fi
       shell: bash -leo pipefail {0}
     - name: Run Unit Tests (iOS)
       run: |
-        xcodebuild -scheme '${{ inputs.scheme }}' -destination 'platform=iOS Simulator,name=iPhone 15 Pro' test \
-        ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }}
+        if [ -f project.yml ]; then
+          xcodebuild -scheme '${{ inputs.scheme }}' -destination 'platform=iOS Simulator,name=iPhone 15 Pro' test \
+          ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }}
+        else
+          swift test
+        fi
       shell: bash -leo pipefail {0}
       if: inputs.platform == 'ios'
     - name: Run Unit Tests (macOS)
       run: |
-        xcodebuild -scheme '${{ inputs.scheme }}' -sdk macosx test -allowProvisioningUpdates \
-        ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }}
+        if [ -f project.yml ]; then
+          xcodebuild -scheme '${{ inputs.scheme }}' -sdk macosx test -allowProvisioningUpdates \
+          ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }}
+        else
+          swift test
+        fi
       shell: bash -leo pipefail {0}
       if: inputs.platform == 'mac'

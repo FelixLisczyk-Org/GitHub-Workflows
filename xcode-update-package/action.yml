@@ -16,15 +16,20 @@ runs:
   using: "composite"
   steps:
     - name: Generate Xcode Project
-      run: xcodegen
+      run: |
+        if [ -f project.yml ]; then
+          xcodegen
+        fi
       shell: bash -leo pipefail {0}
     - name: Update Swift Package Dependencies
       run: swift package update
       shell: bash -leo pipefail {0}
     - name: Update Host App Dependencies
       run: |
-        ${{ github.action_path }}/scripts/clear-xcode-cache.sh
-        xcodebuild -resolvePackageDependencies
+        if [ -f project.yml ]; then
+          ${{ github.action_path }}/scripts/clear-xcode-cache.sh
+          xcodebuild -resolvePackageDependencies
+        fi
       shell: bash -leo pipefail {0}
     - name: Run Unit Tests
       uses: FelixLisczyk-Org/GitHub-Workflows/xcode-test-package@main
