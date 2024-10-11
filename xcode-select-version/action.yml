@@ -18,15 +18,19 @@ runs:
         ORIGINAL_XCODE_PATH=$(xcode-select -p)
         echo "ORIGINAL_XCODE_PATH=$ORIGINAL_XCODE_PATH" >> $GITHUB_OUTPUT
 
-        # Check if beta Xcode is available
-        BETA_XCODE_PATH=$(ls -d /Applications/Xcode*Beta*.app 2>/dev/null | sort -V | tail -n 1 || echo "")
+        # Get all Xcode paths
+        ALL_XCODE_PATHS=$(find /Applications -maxdepth 1 \( -name "Xcode.app" -o -name "Xcode-*.app" \) 2>/dev/null | sort -V)
 
-        if [ "${{ github.ref }}" == "refs/heads/beta" ] && [ -n "$BETA_XCODE_PATH" ]; then
-          echo "Beta Xcode found: $BETA_XCODE_PATH"
-          XCODE_PATH=$BETA_XCODE_PATH
+        if [ "${{ github.ref }}" == "refs/heads/beta" ]; then
+          # Select Beta Xcode if on beta branch
+          XCODE_PATH=$(echo "$ALL_XCODE_PATHS" | grep "Beta" | tail -n 1 || echo "")
+          if [ -z "$XCODE_PATH" ]; then
+            echo "Notice: No Beta Xcode version found, falling back to stable"
+            XCODE_PATH=$(echo "$ALL_XCODE_PATHS" | grep -v "Beta" | tail -n 1 || echo "")
+          fi
         else
-          XCODE_PATH=$(ls -d /Applications/Xcode*.app | grep -v "Beta" | sort -V | tail -n 1)
-          echo "Stable Xcode found: $XCODE_PATH"
+          # Select stable Xcode
+          XCODE_PATH=$(echo "$ALL_XCODE_PATHS" | grep -v "Beta" | tail -n 1 || echo "")
         fi
 
         if [ -z "$XCODE_PATH" ]; then
