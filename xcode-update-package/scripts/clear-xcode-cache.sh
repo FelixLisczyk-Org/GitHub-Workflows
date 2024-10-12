@@ -1,5 +1,10 @@
 #!/bin/bash
 
-rm -rf "$(xcodebuild -showBuildSettings -disableAutomaticPackageResolution -skipPackageUpdates | grep -m 1 BUILD_DIR | grep -oE "\/.*" | sed 's|/Build/Products||')"
+# This approach is more reliable than using 'xcodebuild -showBuildSettings' because the latter is slow and doesn't return a value if it cannot resolve project dependencies.
+PROJECT_NAME=$(basename "$(find . -maxdepth 1 -name '*.xcodeproj' | head -n 1)" .xcodeproj)
+if [ -n "$PROJECT_NAME" ]; then
+    DERIVED_DATA_PATH=$(find "$HOME/Library/Developer/Xcode/DerivedData" -maxdepth 1 -type d -name "${PROJECT_NAME}-*" | head -n 1)
+    rm -rf "$DERIVED_DATA_PATH"
+fi
 rm -rf ./*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 rm -rf ~/Library/Caches/org.swift.swiftpm
