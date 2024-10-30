@@ -22,7 +22,7 @@ runs:
     - name: Run Unit Tests (iOS)
       run: |
         if [ -f project.yml ]; then
-          xcodebuild -scheme '${{ inputs.scheme }}' -destination 'platform=iOS Simulator,name=iPhone 15 Pro' test \
+          xcodebuild -scheme '${{ inputs.scheme }}' -destination 'platform=iOS Simulator,name=iPhone 16 Pro' test \
           ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }}
         else
           swift test
