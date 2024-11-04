@@ -11,6 +11,10 @@ inputs:
     description: "Retry Failed Tests"
     required: false
     default: false
+  skip_tests:
+    description: "Skip Running Tests"
+    required: false
+    default: false
 
 runs:
   using: "composite"
@@ -37,6 +41,7 @@ runs:
         platform: ${{ inputs.platform }}
         scheme: ${{ inputs.scheme }}
         retry_failed_tests: ${{ inputs.retry_failed_tests }}
+      if: ${{ !inputs.skip_tests }}
     - name: Commit & Push changes
       uses: actions-js/push@master
       with:
