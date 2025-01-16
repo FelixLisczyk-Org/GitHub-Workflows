@@ -12,7 +12,7 @@ runs:
       shell: bash -leo pipefail {0}
       if: job.status == 'failure' && contains(runner.workspace, '/Users/runner/')
     - name: (Cloud) On Failure - Upload Workspace as Build Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: workspace
         path: workspace.zip
