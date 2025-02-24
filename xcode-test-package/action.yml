@@ -15,8 +15,8 @@ runs:
   steps:
     - name: Generate Xcode Project
       run: |
-        if [ -f project.yml ]; then
-          xcodegen
+        if [ -f Tuist.swift ]; then
+          tuist install && tuist cache && tuist generate --no-open
         fi
       shell: bash -leo pipefail {0}
     - name: Run Unit Tests (iOS)

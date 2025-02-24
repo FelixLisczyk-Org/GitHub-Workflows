@@ -22,6 +22,9 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Check Implicit Imports
+      run: tuist inspect implicit-imports
+      shell: bash -leo pipefail {0}
     - name: Build and Upload App
       id: build-app
       continue-on-error: true

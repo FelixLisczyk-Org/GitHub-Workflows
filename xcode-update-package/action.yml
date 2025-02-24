@@ -10,19 +10,19 @@ inputs:
   retry_failed_tests:
     description: "Retry Failed Tests"
     required: false
-    default: false
+    default: "false"
   skip_tests:
     description: "Skip Running Tests"
     required: false
-    default: false
+    default: "false"
 
 runs:
   using: "composite"
   steps:
     - name: Generate Xcode Project
       run: |
-        if [ -f project.yml ]; then
-          xcodegen
+        if [ -f Tuist.swift ]; then
+          tuist install && tuist cache && tuist generate --no-open
         fi
       shell: bash -leo pipefail {0}
     - name: Update Swift Package Dependencies
