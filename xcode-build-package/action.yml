@@ -24,8 +24,8 @@ runs:
       shell: bash -leo pipefail {0}
     - name: Resolve Swift Packages
       run: |
-        if [ -f project.yml ]; then
-          xcodebuild -resolvePackageDependencies
+        if [ -f Tuist.swift ]; then
+          tuist install
         else
           swift package resolve
         fi
