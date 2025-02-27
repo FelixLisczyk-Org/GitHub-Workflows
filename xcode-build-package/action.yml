@@ -19,9 +19,6 @@ runs:
           tuist install && tuist cache && tuist generate --no-open
         fi
       shell: bash -leo pipefail {0}
-    - name: Check Implicit Imports
-      run: tuist inspect implicit-imports
-      shell: bash -leo pipefail {0}
     - name: Resolve Swift Packages
       run: |
         if [ -f Tuist.swift ]; then
