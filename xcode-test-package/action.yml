@@ -23,7 +23,7 @@ runs:
       shell: bash -leo pipefail {0}
     - name: Run Unit Tests (iOS)
       run: |
-        if [ -d *.xcodeproj ]; then
+        if ls *.xcodeproj >/dev/null 2>&1; then
           xcodebuild -scheme '${{ inputs.scheme }}' -destination 'platform=iOS Simulator,name=iPhone 16 Pro' test \
           ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }}
         else
@@ -33,7 +33,7 @@ runs:
       if: inputs.platform == 'ios'
     - name: Run Unit Tests (macOS)
       run: |
-        if [ -d *.xcodeproj ]; then
+        if ls *.xcodeproj >/dev/null 2>&1; then
           xcodebuild -scheme '${{ inputs.scheme }}' -sdk macosx test -allowProvisioningUpdates \
           ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }}
         else
