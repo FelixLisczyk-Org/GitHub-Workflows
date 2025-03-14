@@ -33,7 +33,7 @@ runs:
     - name: Update Host App Dependencies
       run: |
         if [ -f project.yml ]; then
-          ${{ github.action_path }}/scripts/clear-xcode-cache.sh
+          ${{ github.action_path }}/../shared-scripts/clear-xcode-cache.sh
           xcodebuild -resolvePackageDependencies
         elif [ -f Tuist.swift ]; then
           tuist install --update

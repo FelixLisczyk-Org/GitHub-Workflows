@@ -1,0 +1,37 @@
+name: Xcode Update App Dependencies
+description: Xcode Update App Dependencies
+inputs:
+  github-token:
+    description: "GitHub Access Token"
+  platform:
+    description: "Target Build Platform"
+  skip_tests:
+    description: "Skip Running Tests"
+    required: false
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Update Dependencies
+      id: update-deps
+      continue-on-error: true
+      run: bundle exec fastlane ${{ inputs.platform }} update_deps skip_tests:${{ inputs.skip-tests }}
+      shell: bash -leo pipefail {0}
+    - name: Analyze Build Errors
+      run: python3 ${{ github.action_path }}/../shared-scripts/check-build-errors.py
+      shell: bash -leo pipefail {0}
+      if: ${{ steps.update-deps.outcome == 'failure' }}
+    - name: Update Dependencies (Retry)
+      run: bundle exec fastlane ${{ inputs.platform }} update_deps skip_tests:${{ inputs.skip-tests }}
+      shell: bash -leo pipefail {0}
+      if: ${{ steps.update-deps.outcome == 'failure' && env.RETRY_BUILD == 'true' }}
+    - name: Abort Workflow (Non-recoverable build error)
+      run: exit 1
+      shell: bash -leo pipefail {0}
+      if: ${{ steps.update-deps.outcome == 'failure' && env.RETRY_BUILD != 'true' }}
+    - name: Commit & Push changes
+      uses: actions-js/push@master
+      with:
+        github_token: ${{ inputs.github-token }}
+        message: Updated dependencies [skip ci]
