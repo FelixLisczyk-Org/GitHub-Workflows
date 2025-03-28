@@ -23,9 +23,13 @@ runs:
       shell: bash -leo pipefail {0}
     - name: Run Unit Tests (iOS)
       run: |
-        if ls *.xcworkspace >/dev/null 2>&1; then
+        if [ -f Tuist.swift ] && ls *.xcworkspace >/dev/null 2>&1; then
           workspace=$(find . -name '*.xcworkspace' -maxdepth 1 | head -n 1)
           xcodebuild -workspace "$workspace" -scheme '${{ inputs.scheme }}' -destination 'platform=iOS Simulator,name=iPhone 16 Pro' test \
+          ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }}
+        elif [ -f project.yml ] && ls *.xcodeproj >/dev/null 2>&1; then
+          project=$(find . -name '*.xcodeproj' -maxdepth 1 | head -n 1)
+          xcodebuild -project "$project" -scheme '${{ inputs.scheme }}' -destination 'platform=iOS Simulator,name=iPhone 16 Pro' test \
           ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }}
         else
           swift test
@@ -34,9 +38,13 @@ runs:
       if: inputs.platform == 'ios'
     - name: Run Unit Tests (macOS)
       run: |
-        if ls *.xcworkspace >/dev/null 2>&1; then
+        if [ -f Tuist.swift ] && ls *.xcworkspace >/dev/null 2>&1; then
           workspace=$(find . -name '*.xcworkspace' -maxdepth 1 | head -n 1)
           xcodebuild -workspace "$workspace" -scheme '${{ inputs.scheme }}' -sdk macosx test -allowProvisioningUpdates \
+          ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }}
+        elif [ -f project.yml ] && ls *.xcodeproj >/dev/null 2>&1; then
+          project=$(find . -name '*.xcodeproj' -maxdepth 1 | head -n 1)
+          xcodebuild -project "$project" -scheme '${{ inputs.scheme }}' -sdk macosx test -allowProvisioningUpdates \
           ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }}
         else
           swift test
