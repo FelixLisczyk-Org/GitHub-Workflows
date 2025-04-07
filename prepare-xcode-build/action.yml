@@ -43,13 +43,13 @@ runs:
       shell: bash -leo pipefail {0}
     - name: Import Development Certificate
       id: create_keychain
-      uses: apple-actions/import-codesign-certs@v5
+      uses: FelixLisczyk/import-codesign-certs@v5.0.1
       with:
         p12-file-base64: ${{ inputs.p12-file-development }}
         p12-password: ${{ inputs.p12-file-development-password }}
       if: inputs.p12-file-development != '' && inputs.p12-file-development-password != ''
     - name: Import Distribution Certificate
-      uses: apple-actions/import-codesign-certs@v5
+      uses: FelixLisczyk/import-codesign-certs@v5.0.1
       with:
         create-keychain: false
         keychain-password: "${{ steps.create_keychain.outputs.keychain-password }}"
