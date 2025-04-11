@@ -19,7 +19,7 @@ retry_errors = [
 
 clear_derived_data_errors = ["ld: symbol(s) not found"]
 
-clear_tuist_cache_errors = ["Underlying Error: Crash"]
+clear_tuist_cache_errors = ["Underlying Error: Crash", "Failed to load the test bundle"]
 
 
 def set_retry_build():
