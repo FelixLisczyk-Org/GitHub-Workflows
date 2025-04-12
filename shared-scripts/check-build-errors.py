@@ -43,7 +43,18 @@ def handle_tuist_cache_error(err):
     print(f"Found error that requires clearing tuist cache: {err}")
     tuist_cache_path = os.path.expanduser("~/.cache/tuist")
     if os.path.exists(tuist_cache_path):
+        print(f"Clearing global tuist cache at {tuist_cache_path}")
         os.system(f"rm -rf {tuist_cache_path}")
+    else:
+        print(f"Global tuist cache not found at {tuist_cache_path}")
+    project_tuist_path = "Tuist/.build"
+    if os.path.exists(project_tuist_path):
+        print(f"Clearing project tuist cache at {project_tuist_path}")
+        os.system(f"rm -rf {project_tuist_path}")
+    else:
+        print(f"Project tuist cache not found at {project_tuist_path}")
+    print("Regenerating tuist cache")
+    os.system("tuist install && tuist cache && tuist generate --no-open")
     set_retry_build()
 
 
