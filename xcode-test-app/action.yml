@@ -1,0 +1,35 @@
+name: Xcode Test App
+description: Xcode Test App
+inputs:
+  platform:
+    description: "Target Build Platform"
+    default: "ios"
+  lane:
+    description: "Fastlane Lane Name"
+    default: "tests"
+  include_unit_tests:
+    description: "Include Unit Tests"
+    default: "true"
+  include_ui_tests:
+    description: "Include UI Tests"
+    default: "false"
+runs:
+  using: "composite"
+  steps:
+    - name: Run Unit Tests
+      id: build-app
+      continue-on-error: true
+      run: bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} include_unit_tests:${{ inputs.include_unit_tests }} include_ui_tests:${{ inputs.include_ui_tests }}
+      shell: bash -leo pipefail {0}
+    - name: Analyze Build Errors
+      run: python3 ${{ github.action_path }}/../shared-scripts/check-build-errors.py
+      shell: bash -leo pipefail {0}
+      if: ${{ steps.build-app.outcome == 'failure' }}
+    - name: Run Unit Tests (Retry)
+      run: bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} include_unit_tests:${{ inputs.include_unit_tests }} include_ui_tests:${{ inputs.include_ui_tests }}
+      shell: bash -leo pipefail {0}
+      if: ${{ steps.build-app.outcome == 'failure' && env.RETRY_BUILD == 'true' }}
+    - name: Abort Workflow (Non-recoverable build error)
+      run: exit 1
+      shell: bash -leo pipefail {0}
+      if: ${{ steps.build-app.outcome == 'failure' && env.RETRY_BUILD != 'true' }}

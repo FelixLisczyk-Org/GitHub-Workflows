@@ -17,7 +17,10 @@ retry_errors = [
     "error: stat",
 ]
 
-clear_derived_data_errors = ["ld: symbol(s) not found"]
+clear_derived_data_errors = [
+    "ld: symbol(s) not found",
+    "Undefined symbol: type metadata accessor",
+]
 
 clear_tuist_cache_errors = ["Underlying Error: Crash", "Failed to load the test bundle"]
 
