@@ -20,6 +20,7 @@ retry_errors = [
 clear_derived_data_errors = [
     "ld: symbol(s) not found",
     "Undefined symbol: type metadata accessor",
+    "Underlying Error: Test crashed with signal abrt before starting test execution.",
 ]
 
 clear_tuist_cache_errors = ["Underlying Error: Crash", "Failed to load the test bundle"]
