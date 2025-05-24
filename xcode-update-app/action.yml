@@ -5,7 +5,7 @@ inputs:
     description: "GitHub Access Token"
   platform:
     description: "Target Build Platform"
-  skip_tests:
+  skip-tests:
     description: "Skip Running Tests"
     required: false
     default: "false"
