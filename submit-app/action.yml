@@ -1,0 +1,43 @@
+name: Submit App
+description: "Submit the latest build to App Store or TestFlight and optionally set a Git version tag."
+inputs:
+  platform:
+    description: "Target platform (ios or mac)"
+    required: true
+  lane:
+    description: "Fastlane lane to use (e.g., submit_to_testflight, submit_for_review)"
+    required: true
+  set-git-tag:
+    description: "Set Git version tag"
+    required: false
+    default: false
+    type: boolean
+  git-tag-version-target:
+    description: "Xcode target name for retrieving the version number"
+    required: false
+  git-tag-suffix:
+    description: "Suffix for git tag (e.g., Release)"
+    required: false
+runs:
+  using: "composite"
+  steps:
+    - name: Submit Latest Build to App Store/TestFlight
+      run: |
+        if [[ "${{ inputs.lane }}" == "submit_to_testflight" ]]; then
+          bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} publish_external:false
+        else
+          bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }}
+        fi
+      shell: bash -leo pipefail {0}
+      timeout-minutes: 5
+    - name: Set Git Version Tag
+      if: ${{ inputs.set-git-tag && inputs.git-tag-version-target != '' && inputs.git-tag-suffix != '' }}
+      run: |
+        ./generate.sh --no-binary-cache
+        if [[ "${{ inputs.platform }}" == "ios" ]]; then
+          bundle exec fastlane ios add_git_version_tag target:${{ inputs.git-tag-version-target }} suffix:${{ inputs.git-tag-suffix }}
+        elif [[ "${{ inputs.platform }}" == "mac" ]]; then
+          bundle exec fastlane mac add_git_version_tag target:${{ inputs.git-tag-version-target }} suffix:${{ inputs.git-tag-suffix }}
+        fi
+        git push --tags
+      shell: bash -leo pipefail {0}
