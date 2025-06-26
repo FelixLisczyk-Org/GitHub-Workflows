@@ -23,21 +23,17 @@ runs:
   steps:
     - name: Submit Latest Build to App Store/TestFlight
       run: |
+        args=""
         if [[ "${{ inputs.lane }}" == "submit_to_testflight" ]]; then
-          bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} publish_external:false
-        else
-          bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }}
+          args="publish_external:false"
         fi
+        bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} $args
       shell: bash -leo pipefail {0}
       timeout-minutes: 5
     - name: Set Git Version Tag
       if: ${{ inputs.set-git-tag && inputs.git-tag-version-target != '' && inputs.git-tag-suffix != '' }}
       run: |
         ./generate.sh --no-binary-cache
-        if [[ "${{ inputs.platform }}" == "ios" ]]; then
-          bundle exec fastlane ios add_git_version_tag target:${{ inputs.git-tag-version-target }} suffix:${{ inputs.git-tag-suffix }}
-        elif [[ "${{ inputs.platform }}" == "mac" ]]; then
-          bundle exec fastlane mac add_git_version_tag target:${{ inputs.git-tag-version-target }} suffix:${{ inputs.git-tag-suffix }}
-        fi
+        bundle exec fastlane ${{ inputs.platform }} add_git_version_tag target:${{ inputs.git-tag-version-target }} suffix:${{ inputs.git-tag-suffix }}
         git push --tags
       shell: bash -leo pipefail {0}
