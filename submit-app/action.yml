@@ -29,7 +29,6 @@ runs:
         fi
         bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} $args
       shell: bash -leo pipefail {0}
-      timeout-minutes: 5
     - name: Set Git Version Tag
       if: ${{ inputs.set-git-tag && inputs.git-tag-version-target != '' && inputs.git-tag-suffix != '' }}
       run: |
