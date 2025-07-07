@@ -9,10 +9,10 @@ inputs:
     default: "tests"
   include_unit_tests:
     description: "Include Unit Tests"
-    default: "true"
+    default: true
   include_ui_tests:
     description: "Include UI Tests"
-    default: "false"
+    default: false
 runs:
   using: "composite"
   steps:

@@ -8,7 +8,7 @@ inputs:
   retry_failed_tests:
     description: "Retry Failed Tests"
     required: false
-    default: "false"
+    default: false
 
 runs:
   using: "composite"
