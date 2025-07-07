@@ -45,7 +45,7 @@ runs:
         platform: ${{ inputs.platform }}
         scheme: ${{ inputs.scheme }}
         retry_failed_tests: ${{ inputs.retry_failed_tests }}
-      if: ${{ !inputs.skip_tests }}
+      if: ${{ inputs.skip_tests != 'true' }}
     - name: Commit & Push changes
       uses: actions-js/push@master
       with:
