@@ -1,11 +1,11 @@
 name: Select Xcode Version
 description: Select the appropriate Xcode version based on the branch
 inputs:
-  runner-root-password:
+  runner_root_password:
     description: "Root password for sudo operations"
     required: true
 outputs:
-  original-xcode-path:
+  original_xcode_path:
     description: "The original Xcode path before selection"
     value: ${{ steps.select-xcode.outputs.ORIGINAL_XCODE_PATH }}
 runs:
@@ -39,7 +39,7 @@ runs:
         fi
 
         echo "Selected Xcode: $XCODE_PATH"
-        echo "${{ inputs.runner-root-password }}" | sudo -S xcode-select -s "$XCODE_PATH"
+        echo "${{ inputs.runner_root_password }}" | sudo -S xcode-select -s "$XCODE_PATH"
         xcodebuild -version
       shell: bash -leo pipefail {0}
       if: contains(runner.workspace, '/Users/runner/') == false

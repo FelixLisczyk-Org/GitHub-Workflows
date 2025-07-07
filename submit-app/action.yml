@@ -7,15 +7,15 @@ inputs:
   lane:
     description: "Fastlane lane to use (e.g., submit_to_testflight, submit_for_review)"
     required: true
-  set-git-tag:
+  set_git_tag:
     description: "Set Git version tag"
     required: false
     default: false
     type: boolean
-  git-tag-version-target:
+  git_tag_version_target:
     description: "Xcode target name for retrieving the version number"
     required: false
-  git-tag-suffix:
+  git_tag_suffix:
     description: "Suffix for git tag (e.g., Release)"
     required: false
 runs:
@@ -30,9 +30,9 @@ runs:
         bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} $args
       shell: bash -leo pipefail {0}
     - name: Set Git Version Tag
-      if: ${{ inputs.set-git-tag && inputs.git-tag-version-target != '' && inputs.git-tag-suffix != '' }}
+      if: ${{ inputs.set_git_tag && inputs.git_tag_version_target != '' && inputs.git_tag_suffix != '' }}
       run: |
         ./generate.sh --no-binary-cache
-        bundle exec fastlane ${{ inputs.platform }} add_git_version_tag target:${{ inputs.git-tag-version-target }} suffix:${{ inputs.git-tag-suffix }}
+        bundle exec fastlane ${{ inputs.platform }} add_git_version_tag target:${{ inputs.git_tag_version_target }} suffix:${{ inputs.git_tag_suffix }}
         git push --tags
       shell: bash -leo pipefail {0}

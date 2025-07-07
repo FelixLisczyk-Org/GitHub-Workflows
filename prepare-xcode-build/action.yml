@@ -3,17 +3,17 @@ description: Prepare Xcode Build
 inputs:
   branch:
     description: "Custom ref/branch to check out (required for TestFlight submission workflow; defaults to the commit of the job that triggered this workflow)"
-  p12-file-development:
+  p12_file_development:
     description: "Development Certificate File (required for dev and release builds)"
-  p12-file-development-password:
+  p12_file_development_password:
     description: "Development Certificate Password (required for dev and release builds)"
-  p12-file-distribution:
+  p12_file_distribution:
     description: "Distribution Certificate File (required for release builds)"
-  p12-file-distribution-password:
+  p12_file_distribution_password:
     description: "Distribution Certificate Password (required for release builds)"
-  ssh-private-key:
+  ssh_private_key:
     description: "Private SSH Key (required for cloud runner)"
-  runner-root-password:
+  runner_root_password:
     description: "Root password for sudo operations"
     required: true
 runs:
@@ -28,9 +28,9 @@ runs:
       id: select-xcode
       uses: FelixLisczyk-Org/GitHub-Workflows/xcode-select-version@main
       with:
-        runner-root-password: ${{ inputs.runner-root-password }}
+        runner_root_password: ${{ inputs.runner_root_password }}
     - name: (Local) Store Original Xcode Path # for later use in `finish-xcode-build`
-      run: echo "ORIGINAL_XCODE_PATH=${{ steps.select-xcode.outputs.original-xcode-path }}" >> $GITHUB_ENV
+      run: echo "ORIGINAL_XCODE_PATH=${{ steps.select-xcode.outputs.original_xcode_path }}" >> $GITHUB_ENV
       shell: bash -leo pipefail {0}
       if: contains(runner.workspace, '/Users/runner/') == false
     - name: (Cloud) Select Xcode Version
@@ -45,22 +45,22 @@ runs:
       id: create_keychain
       uses: apple-actions/import-codesign-certs@v5.0.2
       with:
-        p12-file-base64: ${{ inputs.p12-file-development }}
-        p12-password: ${{ inputs.p12-file-development-password }}
-      if: inputs.p12-file-development != '' && inputs.p12-file-development-password != ''
+        p12-file-base64: ${{ inputs.p12_file_development }}
+        p12-password: ${{ inputs.p12_file_development_password }}
+      if: inputs.p12_file_development != '' && inputs.p12_file_development_password != ''
     - name: Import Distribution Certificate
       uses: apple-actions/import-codesign-certs@v5.0.2
       with:
         create-keychain: false
         keychain-password: "${{ steps.create_keychain.outputs.keychain-password }}"
-        p12-file-base64: ${{ inputs.p12-file-distribution }}
-        p12-password: ${{ inputs.p12-file-distribution-password }}
-      if: inputs.p12-file-distribution != '' && inputs.p12-file-distribution-password != ''
+        p12-file-base64: ${{ inputs.p12_file_distribution }}
+        p12-password: ${{ inputs.p12_file_distribution_password }}
+      if: inputs.p12_file_distribution != '' && inputs.p12_file_distribution_password != ''
     - name: (Cloud) Load SSH Private Key
       uses: webfactory/ssh-agent@v0.7.0
       with:
-        ssh-private-key: ${{ inputs.ssh-private-key }}
-      if: contains(runner.workspace, '/Users/runner/') && inputs.ssh-private-key != ''
+        ssh_private_key: ${{ inputs.ssh_private_key }}
+      if: contains(runner.workspace, '/Users/runner/') && inputs.ssh_private_key != ''
     - name: Clone Swift Packages over SSH
       run: git config --global url."git@github.com:".insteadOf "https://github.com/"
       shell: bash -leo pipefail {0}

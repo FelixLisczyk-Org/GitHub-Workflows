@@ -1,10 +1,10 @@
 name: Restore Xcode Version
 description: Restore the original Xcode version
 inputs:
-  original-xcode-path:
+  original_xcode_path:
     description: "The original Xcode path to restore"
     required: true
-  runner-root-password:
+  runner_root_password:
     description: "Root password for sudo operations"
     required: true
 runs:
@@ -12,8 +12,8 @@ runs:
   steps:
     - name: (Local) Restore Original Xcode Version
       run: |
-        echo "Restoring original Xcode version: ${{ inputs.original-xcode-path }}"
-        echo "${{ inputs.runner-root-password }}" | sudo -S xcode-select -s "${{ inputs.original-xcode-path }}"
+        echo "Restoring original Xcode version: ${{ inputs.original_xcode_path }}"
+        echo "${{ inputs.runner_root_password }}" | sudo -S xcode-select -s "${{ inputs.original_xcode_path }}"
         xcodebuild -version
       shell: bash -leo pipefail {0}
       if: contains(runner.workspace, '/Users/runner/') == false

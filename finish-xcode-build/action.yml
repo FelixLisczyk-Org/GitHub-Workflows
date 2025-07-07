@@ -1,7 +1,7 @@
 name: Finish Xcode Build
 description: Finish Xcode Build
 inputs:
-  runner-root-password:
+  runner_root_password:
     description: "Root password for sudo operations"
     required: true
 runs:
@@ -24,6 +24,6 @@ runs:
     - name: (Local) Restore Xcode Version
       uses: FelixLisczyk-Org/GitHub-Workflows/xcode-restore-version@main
       with:
-        original-xcode-path: ${{ env.ORIGINAL_XCODE_PATH }}
-        runner-root-password: ${{ inputs.runner-root-password }}
+        original_xcode_path: ${{ env.ORIGINAL_XCODE_PATH }}
+        runner_root_password: ${{ inputs.runner_root_password }}
       if: always()

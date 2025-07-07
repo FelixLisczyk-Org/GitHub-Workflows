@@ -7,16 +7,16 @@ inputs:
   lane:
     description: "Fastlane Lane Name"
     default: "release"
-  inc-version:
+  inc_version:
     description: "Increment Version Number"
     required: true
-  inc-build:
+  inc_build:
     description: "Increment Build Number"
     required: true
-  update-deps:
+  update_deps:
     description: "Update Dependencies"
     required: true
-  skip-tests:
+  skip_tests:
     description: "Skip Tests"
     required: true
 runs:
@@ -25,14 +25,14 @@ runs:
     - name: Build and Upload App
       id: build-app
       continue-on-error: true
-      run: bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} inc_version:${{ inputs.inc-version }} inc_build:${{ inputs.inc-build }} update_deps:${{ inputs.update-deps }} skip_publish:true skip_tests:${{ inputs.skip-tests }} clear_artifacts:false
+      run: bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} inc_version:${{ inputs.inc_version }} inc_build:${{ inputs.inc_build }} update_deps:${{ inputs.update_deps }} skip_publish:true skip_tests:${{ inputs.skip_tests }} clear_artifacts:false
       shell: bash -leo pipefail {0}
     - name: Analyze Build Errors
       run: python3 ${{ github.action_path }}/../shared-scripts/check-build-errors.py
       shell: bash -leo pipefail {0}
       if: ${{ steps.build-app.outcome == 'failure' }}
     - name: Build and Upload App (Retry)
-      run: bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} inc_version:false inc_build:false update_deps:false skip_publish:true skip_tests:${{ inputs.skip-tests }} clear_artifacts:false
+      run: bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} inc_version:false inc_build:false update_deps:false skip_publish:true skip_tests:${{ inputs.skip_tests }} clear_artifacts:false
       shell: bash -leo pipefail {0}
       if: ${{ steps.build-app.outcome == 'failure' && env.RETRY_BUILD == 'true' }}
     - name: Abort Workflow (Non-recoverable build error)
