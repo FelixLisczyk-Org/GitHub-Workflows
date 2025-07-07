@@ -59,7 +59,7 @@ runs:
     - name: (Cloud) Load SSH Private Key
       uses: webfactory/ssh-agent@v0.7.0
       with:
-        ssh_private_key: ${{ inputs.ssh_private_key }}
+        ssh-private-key: ${{ inputs.ssh_private_key }}
       if: contains(runner.workspace, '/Users/runner/') && inputs.ssh_private_key != ''
     - name: Clone Swift Packages over SSH
       run: git config --global url."git@github.com:".insteadOf "https://github.com/"
