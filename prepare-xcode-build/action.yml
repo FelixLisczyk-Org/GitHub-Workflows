@@ -70,7 +70,9 @@ runs:
       shell: bash -leo pipefail {0}
       if: contains(runner.workspace, '/Users/runner/') == false
     - name: (Cloud) Install Build Tools
-      run: brew install sourcery swiftgen tuist xcodegen xcbeautify
+      run: |
+        brew update
+        brew install sourcery swiftgen tuist xcodegen xcbeautify
       shell: bash -leo pipefail {0}
       if: contains(runner.workspace, '/Users/runner/')
     - name: Check if Gemfile exists
