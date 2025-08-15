@@ -18,7 +18,13 @@ runs:
         path: workspace.zip
       if: job.status == 'failure' && contains(runner.workspace, '/Users/runner/')
     - name: Revert Git SSH Redirect
-      run: git config --global --unset url."git@github.com:".insteadOf "https://github.com/"
+      run: |
+        if git config --global --get url."git@github.com:".insteadOf >/dev/null 2>&1; then
+          echo "Removing git SSH redirect config..."
+          git config --global --unset url."git@github.com:".insteadOf "https://github.com/"
+        else
+          echo "Git SSH redirect config not found (already removed)"
+        fi
       shell: bash -leo pipefail {0}
       if: always()
     - name: (Local) Restore Xcode Version
