@@ -1,6 +1,10 @@
 name: Select Xcode Version
-description: Select the appropriate Xcode version based on the branch
+description: Select the appropriate Xcode version based on the use_beta_xcode parameter
 inputs:
+  use_beta_xcode:
+    description: "Whether to use Beta Xcode version (defaults to false for stable Xcode)"
+    required: false
+    default: 'false'
   runner_root_password:
     description: "Root password for sudo operations"
     required: true
@@ -21,8 +25,8 @@ runs:
         # Get all Xcode paths
         ALL_XCODE_PATHS=$(find /Applications -maxdepth 1 \( -name "Xcode.app" -o -name "Xcode-*.app" \) 2>/dev/null | sort -V)
 
-        if [ "${{ github.ref }}" == "refs/heads/beta" ]; then
-          # Select Beta Xcode if on beta branch
+        if [ "${{ inputs.use_beta_xcode }}" == "true" ]; then
+          # Select Beta Xcode if use_beta_xcode is true
           XCODE_PATH=$(echo "$ALL_XCODE_PATHS" | grep "Beta" | tail -n 1 || echo "")
           if [ -z "$XCODE_PATH" ]; then
             echo "Notice: No Beta Xcode version found, falling back to stable"
