@@ -23,7 +23,7 @@ runs:
         echo "ORIGINAL_XCODE_PATH=$ORIGINAL_XCODE_PATH" >> $GITHUB_OUTPUT
 
         # Get all Xcode paths
-        ALL_XCODE_PATHS=$(find /Applications -maxdepth 1 \( -name "Xcode.app" -o -name "Xcode-*.app" \) 2>/dev/null | sort -V)
+        ALL_XCODE_PATHS=$(find /Applications -maxdepth 1 \( -name "Xcode.app" -o -name "Xcode-*.app" -o -name "Xcode *.app" -o -name "Xcode*.app" \) 2>/dev/null | sort -V)
 
         if [ "${{ inputs.use_beta_xcode }}" == "true" ]; then
           # Select Beta Xcode if use_beta_xcode is true
@@ -38,7 +38,7 @@ runs:
         fi
 
         if [ -z "$XCODE_PATH" ]; then
-          echo "Error: No suitable Xcode version found"
+          echo "::error title=No Xcode found::No suitable Xcode version was found under /Applications"
           exit 1
         fi
 
