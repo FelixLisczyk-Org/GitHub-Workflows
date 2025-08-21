@@ -28,6 +28,7 @@ runs:
       id: select-xcode
       uses: FelixLisczyk-Org/GitHub-Workflows/xcode-select-version@main
       with:
+        use_beta_xcode: ${{ github.ref == 'refs/heads/beta' }}
         runner_root_password: ${{ inputs.runner_root_password }}
     - name: (Local) Store Original Xcode Path # for later use in `finish-xcode-build`
       run: echo "ORIGINAL_XCODE_PATH=${{ steps.select-xcode.outputs.original_xcode_path }}" >> $GITHUB_ENV
