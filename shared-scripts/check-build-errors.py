@@ -9,36 +9,48 @@ import os
 import subprocess
 import sys
 
-retry_errors = [
-    "The Xcode build system has crashed",
-    "Command CodeSign failed with a nonzero exit code",
-    "The test runner failed to initialize for UI testing",
-    "Segmentation fault",
-    "error: stat",
-]
-
 clear_derived_data_errors = [
     "ld: symbol(s) not found",
     "Undefined symbol: type metadata accessor",
     "Underlying Error: Test crashed with signal abrt before starting test execution.",
+    "compiled with an older version of the compiler",
+]
+
+simulator_errors = [
+    "The test runner failed to initialize for UI testing",
+    "The test runner timed out while preparing to run tests",
 ]
 
 clear_tuist_cache_errors = ["Underlying Error: Crash", "Failed to load the test bundle"]
 
-
-def set_retry_build():
-    """Set RETRY_BUILD flag in GitHub environment"""
-    env_file_path = os.getenv("GITHUB_ENV")
-    if env_file_path:
-        with open(env_file_path, "a", encoding="utf-8") as f:
-            f.write("RETRY_BUILD=true")
-    sys.exit(0)
+retry_errors = [
+    "The Xcode build system has crashed",
+    "Command CodeSign failed with a nonzero exit code",
+    "Segmentation fault",
+    "error: stat",
+]
 
 
 def handle_derived_data_error(err):
     """Handle derived data errors by clearing Xcode derived data"""
     print(f"Found error that requires cleaning derived data: {err}")
     os.system(f"{os.path.dirname(__file__)}/clear-xcode-derived-data.sh")
+    set_retry_build()
+
+
+def handle_simulator_error(err):
+    """Handle simulator errors by quitting Xcode, Simulator, Instruments, killing CoreSimulatorService, and removing CoreSimulator data"""
+    print(f"Found simulator error: {err}")
+    commands = [
+        "osascript -e 'quit app \"Xcode\"'",
+        "osascript -e 'quit app \"Simulator\"'",
+        "osascript -e 'quit app \"Instruments\"'",
+        "killall -9 com.apple.CoreSimulator.CoreSimulatorService",
+        "rm -rf ~/Library/Xcode/CoreSimulator",
+    ]
+    for cmd in commands:
+        print(f"Executing: {cmd}")
+        os.system(cmd)
     set_retry_build()
 
 
@@ -70,11 +82,20 @@ def handle_regular_error(err):
 
 def process_errors(error_messages):
     """Process a list of error messages and handle them based on priority"""
+    # Accept both string and list input
+    if isinstance(error_messages, str):
+        error_messages = [error_messages]
     for error_message in error_messages:
+
         # Check for errors that require clearing derived data
         for error in clear_derived_data_errors:
             if error in error_message:
                 handle_derived_data_error(error)
+
+        # Check for errors that require simulator reset
+        for error in simulator_errors:
+            if error in error_message:
+                handle_simulator_error(error)
 
         # Check for errors that require clearing tuist cache
         for error in clear_tuist_cache_errors:
@@ -117,6 +138,15 @@ def get_xcresult_errors(xcresult_path):
     except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
         print(f"Error processing {xcresult_path}: {str(e)}")
         return []
+
+
+def set_retry_build():
+    """Set RETRY_BUILD flag in GitHub environment"""
+    env_file_path = os.getenv("GITHUB_ENV")
+    if env_file_path:
+        with open(env_file_path, "a", encoding="utf-8") as f:
+            f.write("RETRY_BUILD=true")
+    sys.exit(0)
 
 
 if not os.path.exists("log"):
