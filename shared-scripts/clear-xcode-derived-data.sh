@@ -9,5 +9,6 @@ if [ -n "$PROJECT_NAME" ]; then
     else
         DERIVED_DATA_PATH=$(find "$HOME/Library/Developer/Xcode/DerivedData" -maxdepth 1 -type d -name "${PROJECT_NAME}-*" | head -n 1)
     fi
+    echo "Deleting derived data at: $DERIVED_DATA_PATH"
     rm -rf "$DERIVED_DATA_PATH"
 fi
