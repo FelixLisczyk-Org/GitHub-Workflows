@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # This approach is more reliable than using 'xcodebuild -showBuildSettings' because the latter is slow and doesn't return a value if it cannot resolve project dependencies.
-PROJECT_NAME=$(basename "$(find . -maxdepth 1 -name '*-HostApp.xcodeproj' | head -n 1)" .xcodeproj)
+PROJECT_NAME=$(basename "$(find . -maxdepth 1 -name '*.xcodeproj' | head -n 1)" .xcodeproj)
 if [ -n "$PROJECT_NAME" ]; then
     CUSTOM_DERIVED_DATA=$(defaults read com.apple.dt.Xcode IDECustomDerivedDataLocation)
     if [ -n "$CUSTOM_DERIVED_DATA" ]; then
