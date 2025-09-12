@@ -42,15 +42,23 @@ runs:
     - name: Allow Swift Macros to be executed
       run: defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
       shell: bash -leo pipefail {0}
+    - name: Cleanup existing 'signing_temp' keychain if present
+      run: |
+        if security list-keychains | grep -q 'signing_temp.keychain-db'; then
+          echo "Deleting leftover 'signing_temp' keychain..."
+          security delete-keychain signing_temp.keychain-db
+        fi
+      shell: bash -leo pipefail {0}
+      # This step is important if the previous workflow was interrupted and the keychain cleanup in the 'finish-xcode-build' step didn't run
     - name: Import Development Certificate
       id: create_keychain
-      uses: apple-actions/import-codesign-certs@v5.0.2
+      uses: apple-actions/import-codesign-certs@v5.0.3
       with:
         p12-file-base64: ${{ inputs.p12_file_development }}
         p12-password: ${{ inputs.p12_file_development_password }}
       if: inputs.p12_file_development != '' && inputs.p12_file_development_password != ''
     - name: Import Distribution Certificate
-      uses: apple-actions/import-codesign-certs@v5.0.2
+      uses: apple-actions/import-codesign-certs@v5.0.3
       with:
         create-keychain: false
         keychain-password: "${{ steps.create_keychain.outputs.keychain-password }}"
