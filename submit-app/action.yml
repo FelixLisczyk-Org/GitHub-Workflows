@@ -33,6 +33,6 @@ runs:
       if: ${{ inputs.set_git_tag && inputs.git_tag_version_target != '' && inputs.git_tag_suffix != '' }}
       run: |
         ./generate.sh --no-binary-cache
-        bundle exec fastlane ${{ inputs.platform }} add_git_version_tag target:${{ inputs.git_tag_version_target }} suffix:${{ inputs.git_tag_suffix }}
+        bundle exec fastlane ${{ inputs.platform }} add_git_version_tag target:"${{ inputs.git_tag_version_target }}" suffix:"${{ inputs.git_tag_suffix }}"
         git push --tags
       shell: bash -leo pipefail {0}
