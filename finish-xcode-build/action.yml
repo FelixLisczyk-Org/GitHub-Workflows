@@ -33,3 +33,8 @@ runs:
         original_xcode_path: ${{ env.ORIGINAL_XCODE_PATH }}
         runner_root_password: ${{ inputs.runner_root_password }}
       if: always()
+    - name: Remove [safe] section from gitconfig
+      run: |
+        git config --global --remove-section safe || echo "[safe] section not found"
+      shell: bash -leo pipefail {0}
+      if: always()
