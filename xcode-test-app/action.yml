@@ -21,14 +21,30 @@ runs:
       continue-on-error: true
       run: bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} include_unit_tests:${{ inputs.include_unit_tests }} include_ui_tests:${{ inputs.include_ui_tests }}
       shell: bash -leo pipefail {0}
+    - name: Show Test Failures
+      run: python3 ${{ github.action_path }}/../shared-scripts/show-test-failures.py
+      shell: bash -leo pipefail {0}
+      continue-on-error: true
+      if: ${{ steps.build-app.outcome == 'failure' }}
     - name: Analyze Build Errors
       run: python3 ${{ github.action_path }}/../shared-scripts/check-build-errors.py
       shell: bash -leo pipefail {0}
       if: ${{ steps.build-app.outcome == 'failure' }}
     - name: Run Unit Tests (Retry)
+      id: retry-tests
+      continue-on-error: true
       run: bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} include_unit_tests:${{ inputs.include_unit_tests }} include_ui_tests:${{ inputs.include_ui_tests }}
       shell: bash -leo pipefail {0}
       if: ${{ steps.build-app.outcome == 'failure' && env.RETRY_BUILD == 'true' }}
+    - name: Show Test Failures (Retry)
+      run: python3 ${{ github.action_path }}/../shared-scripts/show-test-failures.py
+      shell: bash -leo pipefail {0}
+      continue-on-error: true
+      if: ${{ steps.retry-tests.outcome == 'failure' }}
+    - name: Abort Workflow (Retry failed)
+      run: exit 1
+      shell: bash -leo pipefail {0}
+      if: ${{ steps.retry-tests.outcome == 'failure' }}
     - name: Abort Workflow (Non-recoverable build error)
       run: exit 1
       shell: bash -leo pipefail {0}
