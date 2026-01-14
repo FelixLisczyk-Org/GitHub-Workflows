@@ -20,6 +20,17 @@ clear_derived_data_errors = [
 simulator_errors = [
     "The test runner failed to initialize for UI testing",
     "The test runner timed out while preparing to run tests",
+    # XCUITest-specific failures (SN-317)
+    "Failed to perform AX action",
+    "App failed to quiesce within",
+    "Failed to establish communication with the test runner",
+    "UI Testing Failure - Failed to perform AX action for monitoring the animations",
+    "kAXErrorServerNotFound",
+    "after 30 retries: kAXError",
+    "UI Testing Failure - App failed to quiesce",
+    "Test session exited",
+    "Unable to run test class",
+    "Connection interrupted",
 ]
 
 clear_tuist_cache_errors = ["Underlying Error: Crash", "Failed to load the test bundle"]
