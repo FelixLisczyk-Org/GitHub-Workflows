@@ -27,13 +27,17 @@ def get_test_results(xcresult_path):
             capture_output=True,
             text=True,
             check=True,
+            timeout=60,
         )
         return json.loads(result.stdout)
     except subprocess.CalledProcessError as e:
-        print(f"Warning: Failed to get test results from {xcresult_path}: {e.stderr}")
+        print(f"Warning: Failed to get test results from {xcresult_path}: {e.stderr}", file=sys.stderr)
+        return None
+    except subprocess.TimeoutExpired:
+        print(f"Warning: Timeout while getting test results from {xcresult_path}", file=sys.stderr)
         return None
     except json.JSONDecodeError as e:
-        print(f"Warning: Failed to parse test results JSON from {xcresult_path}: {e}")
+        print(f"Warning: Failed to parse test results JSON from {xcresult_path}: {e}", file=sys.stderr)
         return None
 
 
@@ -122,8 +126,13 @@ def output_github_annotation(failure):
     else:
         annotation_message = message
 
-    # Escape newlines and special characters for annotation
-    annotation_message = annotation_message.replace("\n", " ").replace("\r", "")
+    # Escape special chars for GitHub annotations
+    annotation_message = (
+        annotation_message
+        .replace("%", "%25")
+        .replace("\r", "%0D")
+        .replace("\n", "%0A")
+    )
 
     print(f"::error title={title}::{annotation_message}")
 
@@ -177,18 +186,20 @@ def process_xcresult(xcresult_path):
 def main():
     """Main entry point - scan log directory for xcresult files."""
     log_dir = "log"
-
-    if not os.path.exists(log_dir):
-        # Silent exit if no log directory (not an error condition)
-        return
+    xcresult_path_arg = sys.argv[1] if len(sys.argv) > 1 else None
 
     all_failures = []
 
-    for file_name in os.listdir(log_dir):
-        if file_name.endswith(".xcresult"):
-            xcresult_path = os.path.join(log_dir, file_name)
-            failures = process_xcresult(xcresult_path)
+    if xcresult_path_arg and xcresult_path_arg.endswith(".xcresult"):
+        if os.path.exists(xcresult_path_arg):
+            failures = process_xcresult(xcresult_path_arg)
             all_failures.extend(failures)
+    elif os.path.exists(log_dir):
+        for file_name in os.listdir(log_dir):
+            if file_name.endswith(".xcresult"):
+                xcresult_path = os.path.join(log_dir, file_name)
+                failures = process_xcresult(xcresult_path)
+                all_failures.extend(failures)
 
     if not all_failures:
         # Silent exit if no failures found
