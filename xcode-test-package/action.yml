@@ -21,33 +21,62 @@ runs:
           tuist install && tuist cache && tuist generate --no-open
         fi
       shell: bash -leo pipefail {0}
+    - name: Prepare Log Directory
+      run: mkdir -p log && rm -rf log/TestResults.xcresult
+      shell: bash -leo pipefail {0}
     - name: Run Unit Tests (iOS)
+      id: test-ios
+      continue-on-error: true
       run: |
         if [ -f Tuist.swift ] && ls *.xcworkspace >/dev/null 2>&1; then
           workspace=$(find . -name '*.xcworkspace' -maxdepth 1 | head -n 1)
           xcodebuild -workspace "$workspace" -scheme '${{ inputs.scheme }}' -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test \
+          -resultBundlePath log/TestResults.xcresult \
           ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }} | xcbeautify
         elif [ -f project.yml ] && ls *.xcodeproj >/dev/null 2>&1; then
           project=$(find . -name '*.xcodeproj' -maxdepth 1 | head -n 1)
           xcodebuild -project "$project" -scheme '${{ inputs.scheme }}' -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test \
+          -resultBundlePath log/TestResults.xcresult \
           ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }} | xcbeautify
         else
           swift test
         fi
       shell: bash -leo pipefail {0}
       if: inputs.platform == 'ios'
+    - name: Show Test Failures (iOS)
+      run: python3 ${{ github.action_path }}/../shared-scripts/show-test-failures.py
+      shell: bash -leo pipefail {0}
+      continue-on-error: true
+      if: inputs.platform == 'ios' && steps.test-ios.outcome == 'failure'
+    - name: Fail on iOS Test Errors
+      run: exit 1
+      shell: bash -leo pipefail {0}
+      if: inputs.platform == 'ios' && steps.test-ios.outcome == 'failure'
     - name: Run Unit Tests (macOS)
+      id: test-macos
+      continue-on-error: true
       run: |
         if [ -f Tuist.swift ] && ls *.xcworkspace >/dev/null 2>&1; then
           workspace=$(find . -name '*.xcworkspace' -maxdepth 1 | head -n 1)
           xcodebuild -workspace "$workspace" -scheme '${{ inputs.scheme }}' -sdk macosx test -allowProvisioningUpdates \
+          -resultBundlePath log/TestResults.xcresult \
           ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }} | xcbeautify
         elif [ -f project.yml ] && ls *.xcodeproj >/dev/null 2>&1; then
           project=$(find . -name '*.xcodeproj' -maxdepth 1 | head -n 1)
           xcodebuild -project "$project" -scheme '${{ inputs.scheme }}' -sdk macosx test -allowProvisioningUpdates \
+          -resultBundlePath log/TestResults.xcresult \
           ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }} | xcbeautify
         else
           swift test
         fi
       shell: bash -leo pipefail {0}
       if: inputs.platform == 'mac'
+    - name: Show Test Failures (macOS)
+      run: python3 ${{ github.action_path }}/../shared-scripts/show-test-failures.py
+      shell: bash -leo pipefail {0}
+      continue-on-error: true
+      if: inputs.platform == 'mac' && steps.test-macos.outcome == 'failure'
+    - name: Fail on macOS Test Errors
+      run: exit 1
+      shell: bash -leo pipefail {0}
+      if: inputs.platform == 'mac' && steps.test-macos.outcome == 'failure'
