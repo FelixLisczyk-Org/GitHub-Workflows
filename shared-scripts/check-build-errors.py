@@ -15,6 +15,7 @@ clear_derived_data_errors = [
     "Underlying Error: Test crashed with signal abrt before starting test execution.",
     "compiled with an older version of the compiler",  # Compiler version too new
     "cannot be imported by the Swift",  # Compiler version too old, e.g. 'Module compiled with Swift 6.2 cannot be imported by the Swift 6.1.2 compiler'
+    "no such file or directory" # no such file or directory: '/Users/felix/Library/Developer/Xcode/DerivedData/SnipNotes-agjjroxsurolhibhbioigwxxcpzx/Build/Products/Debug-iphonesimulator/cmark_gfm.framework/cmark_gfm'
 ]
 
 simulator_errors = [
