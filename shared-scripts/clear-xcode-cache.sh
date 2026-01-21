@@ -4,7 +4,5 @@
 "$(dirname "$0")/clear-xcode-derived-data.sh"
 
 # Clear Swift Package Manager caches
-for f in ./*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved; do
-    [ -e "$f" ] && rm -rf "$f"
-done
-[ -e ~/Library/Caches/org.swift.swiftpm ] && rm -rf ~/Library/Caches/org.swift.swiftpm || true
+rm -rf ./*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved 2>/dev/null || true
+rm -rf ~/Library/Caches/org.swift.swiftpm 2>/dev/null || true
