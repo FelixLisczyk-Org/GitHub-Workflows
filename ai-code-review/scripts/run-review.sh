@@ -71,8 +71,8 @@ PR_BODY=$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --json body --
 
 echo "::endgroup::"
 
-# --- Write PR context to temp file (avoids CLI argument length limits) ---
-CONTEXT_FILE=$(mktemp --suffix=.md)
+# --- Write PR context to workspace file for OpenCode to read ---
+CONTEXT_FILE="${GITHUB_WORKSPACE}/.ai-review-context.md"
 cat > "${CONTEXT_FILE}" <<CTXEOF
 ## PR Information
 
@@ -90,6 +90,7 @@ ${DIFF}
 \`\`\`
 CTXEOF
 
+GUIDELINES_FILE="${ACTION_PATH}/review-guidelines.md"
 echo "Context file: $(wc -c < "${CONTEXT_FILE}") bytes"
 
 # --- Configure OpenCode ---
@@ -111,26 +112,9 @@ echo "Running OpenCode in headless mode..."
 REVIEW_FILE=$(mktemp)
 STDERR_FILE=$(mktemp)
 
-# Attach context and guidelines as files to avoid argument length limits
+# Pass a short prompt; OpenCode reads context via its own file tools
 opencode run \
-  --file "${CONTEXT_FILE}" \
-  --file "${ACTION_PATH}/review-guidelines.md" \
-  "You are performing an AI code review on a pull request.
-
-Read the two attached files:
-1. The first file contains the PR description, ticket context, and diff.
-2. The second file contains the review guidelines and output format.
-
-Instructions:
-1. Read the diff carefully.
-2. For each changed file, use the file read tools to explore the surrounding code for context.
-3. If ticket context was found, compare changes against ticket requirements.
-4. Apply the review guidelines and verification checklist to identify issues.
-5. Output your review in the exact Markdown format specified in the review guidelines.
-6. Focus on the most impactful issues. Prioritize potential bugs and security issues.
-7. If the code looks good, say so briefly and still provide the requirements verification section.
-8. Do NOT suggest purely stylistic changes not covered by the guidelines.
-9. Output ONLY the review Markdown — no preamble, no explanation outside the format." \
+  "You are performing an AI code review on a pull request. Read the file at ${CONTEXT_FILE} for the PR description, ticket context, and diff. Read the file at ${GUIDELINES_FILE} for review guidelines and output format. Then: 1) For each changed file in the diff, use your read tools to explore surrounding code for context. 2) Apply the review guidelines to identify issues. 3) Output ONLY the review Markdown in the format specified in the guidelines — no preamble." \
   > "${REVIEW_FILE}" 2>"${STDERR_FILE}" || true
 
 # Show stderr for debugging (visible in GitHub Actions logs)
