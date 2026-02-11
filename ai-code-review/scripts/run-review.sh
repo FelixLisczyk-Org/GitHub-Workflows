@@ -26,6 +26,16 @@ case "${PROVIDER}" in
     ;;
 esac
 
+# --- Check if review already exists ---
+REVIEW_MARKER="Reviewed by AI using OpenCode"
+EXISTING_REVIEW=$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --json comments --jq ".comments[].body" 2>/dev/null | grep -c "${REVIEW_MARKER}" || true)
+
+if [ "${EXISTING_REVIEW}" -gt 0 ]; then
+  echo "AI review comment already exists on PR #${PR_NUMBER}. Skipping."
+  echo "::endgroup::"
+  exit 0
+fi
+
 # --- Fetch PR diff ---
 echo "Fetching PR diff..."
 DIFF=$(gh pr diff "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" 2>/dev/null || true)
