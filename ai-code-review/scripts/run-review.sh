@@ -114,10 +114,12 @@ OPENCODE_CONFIG=$(cat <<JSONEOF
     "grep": "allow",
     "list": "allow",
     "edit": "deny",
-    "write": "deny",
     "bash": "deny",
     "task": "deny",
-    "skill": "deny"
+    "skill": "deny",
+    "webfetch": "deny",
+    "websearch": "deny",
+    "todowrite": "deny"
   }
 }
 JSONEOF
