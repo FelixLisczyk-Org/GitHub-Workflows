@@ -1,0 +1,37 @@
+name: AI Code Review
+description: Run AI-powered code review on pull requests using OpenCode
+
+inputs:
+  api_key:
+    description: "API key for the LLM provider"
+    required: true
+  provider:
+    description: "LLM provider name (e.g., fireworks, anthropic, openai, openrouter, groq)"
+    default: "fireworks"
+  model:
+    description: "Model identifier (format: provider/model-id)"
+    default: "fireworks/accounts/fireworks/models/kimi-k2p5"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install OpenCode
+      run: brew install anomalyco/tap/opencode
+      shell: bash -leo pipefail {0}
+
+    - name: Run AI Code Review
+      id: review
+      continue-on-error: true
+      run: ${{ github.action_path }}/scripts/run-review.sh
+      shell: bash -leo pipefail {0}
+      env:
+        PROVIDER: ${{ inputs.provider }}
+        MODEL: ${{ inputs.model }}
+        API_KEY: ${{ inputs.api_key }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        ACTION_PATH: ${{ github.action_path }}
+
+    - name: Review skipped or failed
+      if: ${{ steps.review.outcome == 'failure' }}
+      run: echo "::warning::AI code review failed or was skipped. This does not block the PR."
+      shell: bash -leo pipefail {0}
