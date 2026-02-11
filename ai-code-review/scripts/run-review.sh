@@ -71,16 +71,9 @@ PR_BODY=$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --json body --
 
 echo "::endgroup::"
 
-# --- Read review guidelines ---
-GUIDELINES=$(cat "${ACTION_PATH}/review-guidelines.md")
-
-# --- Build the review prompt ---
-PROMPT="You are performing an AI code review on a pull request.
-
-## Review Guidelines
-
-${GUIDELINES}
-
+# --- Write PR context to temp file (avoids CLI argument length limits) ---
+CONTEXT_FILE=$(mktemp --suffix=.md)
+cat > "${CONTEXT_FILE}" <<CTXEOF
 ## PR Information
 
 PR #${PR_NUMBER} in ${GITHUB_REPOSITORY}
@@ -95,56 +88,58 @@ ${LINEAR_CONTEXT:-No Linear ticket context found in PR comments. Proceed with re
 \`\`\`diff
 ${DIFF}
 \`\`\`
+CTXEOF
 
-## Instructions
-
-1. Read the diff above carefully.
-2. For each changed file in the diff, use the file read tools to explore the surrounding code in this repository for context. Look at imports, related types, and the overall structure of the file.
-3. If a Linear ticket context was found above, compare the changes against the ticket requirements.
-4. Apply the review guidelines and verification checklist to identify issues.
-5. Output your review in the exact Markdown format specified in the Review Output Format section above.
-6. Focus on the most impactful issues. If the diff is large, prioritize potential bugs and security issues.
-7. If the code looks good with no significant issues, say so briefly and still provide the requirements verification section.
-8. Do NOT suggest changes that are purely stylistic preferences not covered by the guidelines.
-9. Output ONLY the review Markdown — no preamble, no explanation outside the format."
+echo "Context file: $(wc -c < "${CONTEXT_FILE}") bytes"
 
 # --- Configure OpenCode ---
-# Use OPENCODE_CONFIG_CONTENT to inject config without filesystem hacks
-# Use OPENCODE_DISABLE_PROJECT_CONFIG to ignore any project-level opencode.json
 export OPENCODE_DISABLE_PROJECT_CONFIG=true
 export OPENCODE_DISABLE_AUTOUPDATE=true
 
-OPENCODE_CONFIG=$(cat <<JSONEOF
+export OPENCODE_CONFIG_CONTENT=$(cat <<JSONEOF
 {
   "\$schema": "https://opencode.ai/config.json",
-  "model": "${MODEL}",
-  "permission": {
-    "read": "allow",
-    "glob": "allow",
-    "grep": "allow",
-    "list": "allow",
-    "edit": "deny",
-    "bash": "deny",
-    "task": "deny",
-    "skill": "deny",
-    "webfetch": "deny",
-    "websearch": "deny",
-    "todowrite": "deny"
-  }
+  "model": "${MODEL}"
 }
 JSONEOF
 )
-export OPENCODE_CONFIG_CONTENT="${OPENCODE_CONFIG}"
 
 # --- Run OpenCode ---
 echo "::group::Running AI Code Review"
 echo "Running OpenCode in headless mode..."
 
 REVIEW_FILE=$(mktemp)
+STDERR_FILE=$(mktemp)
 
-# Run OpenCode and capture raw output
-opencode run "${PROMPT}" > "${REVIEW_FILE}" 2>/dev/null || true
+# Attach context and guidelines as files to avoid argument length limits
+opencode run \
+  --file "${CONTEXT_FILE}" \
+  --file "${ACTION_PATH}/review-guidelines.md" \
+  "You are performing an AI code review on a pull request.
 
+Read the two attached files:
+1. The first file contains the PR description, ticket context, and diff.
+2. The second file contains the review guidelines and output format.
+
+Instructions:
+1. Read the diff carefully.
+2. For each changed file, use the file read tools to explore the surrounding code for context.
+3. If ticket context was found, compare changes against ticket requirements.
+4. Apply the review guidelines and verification checklist to identify issues.
+5. Output your review in the exact Markdown format specified in the review guidelines.
+6. Focus on the most impactful issues. Prioritize potential bugs and security issues.
+7. If the code looks good, say so briefly and still provide the requirements verification section.
+8. Do NOT suggest purely stylistic changes not covered by the guidelines.
+9. Output ONLY the review Markdown — no preamble, no explanation outside the format." \
+  > "${REVIEW_FILE}" 2>"${STDERR_FILE}" || true
+
+# Show stderr for debugging (visible in GitHub Actions logs)
+if [ -s "${STDERR_FILE}" ]; then
+  echo "::warning::OpenCode stderr output:"
+  cat "${STDERR_FILE}"
+fi
+
+rm -f "${CONTEXT_FILE}" "${STDERR_FILE}"
 echo "::endgroup::"
 
 # --- Validate output ---
