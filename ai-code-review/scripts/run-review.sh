@@ -90,7 +90,9 @@ ${DIFF}
 \`\`\`
 CTXEOF
 
-GUIDELINES_FILE="${ACTION_PATH}/review-guidelines.md"
+# Copy guidelines into workspace so OpenCode can read without external_directory permission
+GUIDELINES_FILE="${GITHUB_WORKSPACE}/.ai-review-guidelines.md"
+cp "${ACTION_PATH}/review-guidelines.md" "${GUIDELINES_FILE}"
 echo "Context file: $(wc -c < "${CONTEXT_FILE}") bytes"
 
 # --- Configure OpenCode ---
@@ -140,4 +142,4 @@ echo "Review comment posted successfully."
 echo "::endgroup::"
 
 # Cleanup
-rm -f "${REVIEW_FILE}"
+rm -f "${REVIEW_FILE}" "${GUIDELINES_FILE}"
