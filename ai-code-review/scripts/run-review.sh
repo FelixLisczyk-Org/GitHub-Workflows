@@ -15,11 +15,11 @@ echo "PR: #${PR_NUMBER}"
 
 # --- Map API key to provider-specific environment variable ---
 case "${PROVIDER}" in
-  fireworks)   export FIREWORKS_API_KEY="${API_KEY}" ;;
-  anthropic)   export ANTHROPIC_API_KEY="${API_KEY}" ;;
-  openai)      export OPENAI_API_KEY="${API_KEY}" ;;
-  openrouter)  export OPENROUTER_API_KEY="${API_KEY}" ;;
-  groq)        export GROQ_API_KEY="${API_KEY}" ;;
+  fireworks-ai) export FIREWORKS_API_KEY="${API_KEY}" ;;
+  anthropic)    export ANTHROPIC_API_KEY="${API_KEY}" ;;
+  openai)       export OPENAI_API_KEY="${API_KEY}" ;;
+  openrouter)   export OPENROUTER_API_KEY="${API_KEY}" ;;
+  groq)         export GROQ_API_KEY="${API_KEY}" ;;
   *)
     echo "::warning::Unknown provider '${PROVIDER}', setting generic API key env vars"
     export OPENAI_API_KEY="${API_KEY}"

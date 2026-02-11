@@ -36,11 +36,11 @@ inputs:
     description: "API key for the LLM provider"
     required: true
   provider:
-    description: "LLM provider name (e.g., fireworks, anthropic, openai, openrouter, groq)"
-    default: "fireworks"
+    description: "LLM provider name (e.g., fireworks-ai, anthropic, openai, openrouter, groq)"
+    default: "fireworks-ai"
   model:
     description: "Model identifier (format: provider/model-id)"
-    default: "fireworks/accounts/fireworks/models/kimi-k2p5"
+    default: "fireworks-ai/accounts/fireworks/models/kimi-k2p5"
 
 runs:
   using: "composite"
