@@ -135,6 +135,17 @@ if [ ! -s "${REVIEW_FILE}" ]; then
   exit 1
 fi
 
+# --- Strip preamble text before the review headline ---
+# OpenCode may output "thinking" text before the actual review Markdown.
+# Find the first Markdown headline (## AI Code Review) and discard everything before it.
+if grep -qn '^## AI Code Review' "${REVIEW_FILE}"; then
+  HEADLINE_LINE=$(grep -n '^## AI Code Review' "${REVIEW_FILE}" | head -1 | cut -d: -f1)
+  tail -n "+${HEADLINE_LINE}" "${REVIEW_FILE}" > "${REVIEW_FILE}.trimmed"
+  mv "${REVIEW_FILE}.trimmed" "${REVIEW_FILE}"
+else
+  echo "::warning::Review output does not contain expected '## AI Code Review' headline. Posting as-is."
+fi
+
 echo "::group::Posting Review Comment"
 echo "Posting review comment to PR #${PR_NUMBER}..."
 gh pr comment "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --body-file "${REVIEW_FILE}"
