@@ -46,7 +46,21 @@ runs:
   using: "composite"
   steps:
     - name: Install OpenCode
-      run: curl -fsSL https://opencode.ai/install | bash
+      run: |
+        for attempt in 1 2 3; do
+          echo "Installing OpenCode (attempt ${attempt}/3)..."
+          if curl -fsSL https://opencode.ai/install | bash; then
+            echo "OpenCode installed successfully."
+            break
+          fi
+          if [ "${attempt}" -lt 3 ]; then
+            echo "::warning::OpenCode install failed (attempt ${attempt}/3). Retrying in 5s..."
+            sleep 5
+          else
+            echo "::error::OpenCode install failed after 3 attempts."
+            exit 1
+          fi
+        done
       shell: bash -leo pipefail {0}
 
     - name: Run AI Code Review
