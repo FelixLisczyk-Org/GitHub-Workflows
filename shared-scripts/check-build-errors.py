@@ -25,6 +25,8 @@ simulator_errors = [
     "Failed to perform AX action",
     "App failed to quiesce within",
     "Failed to establish communication with the test runner",
+    "Failed to install or launch the test runner",
+    "Test crashed with signal kill",
     "UI Testing Failure - Failed to perform AX action for monitoring the animations",
     "kAXErrorServerNotFound",
     "after 30 retries: kAXError",

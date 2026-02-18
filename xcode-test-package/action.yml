@@ -48,10 +48,42 @@ runs:
       shell: bash -leo pipefail {0}
       continue-on-error: true
       if: inputs.platform == 'ios' && steps.test-ios.outcome == 'failure'
-    - name: Fail on iOS Test Errors
-      run: exit 1
+    - name: Analyze Build Errors (iOS)
+      run: python3 ${{ github.action_path }}/../shared-scripts/check-build-errors.py
       shell: bash -leo pipefail {0}
       if: inputs.platform == 'ios' && steps.test-ios.outcome == 'failure'
+    - name: Run Unit Tests (iOS) (Retry)
+      id: retry-ios
+      continue-on-error: true
+      run: |
+        if [ -f Tuist.swift ] && ls *.xcworkspace >/dev/null 2>&1; then
+          workspace=$(find . -name '*.xcworkspace' -maxdepth 1 | head -n 1)
+          xcodebuild -workspace "$workspace" -scheme '${{ inputs.scheme }}' -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test \
+          -resultBundlePath log/TestResults.xcresult \
+          ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }} | xcbeautify
+        elif [ -f project.yml ] && ls *.xcodeproj >/dev/null 2>&1; then
+          project=$(find . -name '*.xcodeproj' -maxdepth 1 | head -n 1)
+          xcodebuild -project "$project" -scheme '${{ inputs.scheme }}' -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test \
+          -resultBundlePath log/TestResults.xcresult \
+          ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }} | xcbeautify
+        else
+          swift test
+        fi
+      shell: bash -leo pipefail {0}
+      if: inputs.platform == 'ios' && steps.test-ios.outcome == 'failure' && env.RETRY_BUILD == 'true'
+    - name: Show Test Failures (iOS) (Retry)
+      run: python3 ${{ github.action_path }}/../shared-scripts/show-test-failures.py
+      shell: bash -leo pipefail {0}
+      continue-on-error: true
+      if: steps.retry-ios.outcome == 'failure'
+    - name: Abort Workflow (iOS Retry Failed)
+      run: exit 1
+      shell: bash -leo pipefail {0}
+      if: steps.retry-ios.outcome == 'failure'
+    - name: Abort Workflow (iOS Non-Recoverable)
+      run: exit 1
+      shell: bash -leo pipefail {0}
+      if: inputs.platform == 'ios' && steps.test-ios.outcome == 'failure' && env.RETRY_BUILD != 'true'
     - name: Run Unit Tests (macOS)
       id: test-macos
       continue-on-error: true
@@ -76,7 +108,39 @@ runs:
       shell: bash -leo pipefail {0}
       continue-on-error: true
       if: inputs.platform == 'mac' && steps.test-macos.outcome == 'failure'
-    - name: Fail on macOS Test Errors
-      run: exit 1
+    - name: Analyze Build Errors (macOS)
+      run: python3 ${{ github.action_path }}/../shared-scripts/check-build-errors.py
       shell: bash -leo pipefail {0}
       if: inputs.platform == 'mac' && steps.test-macos.outcome == 'failure'
+    - name: Run Unit Tests (macOS) (Retry)
+      id: retry-macos
+      continue-on-error: true
+      run: |
+        if [ -f Tuist.swift ] && ls *.xcworkspace >/dev/null 2>&1; then
+          workspace=$(find . -name '*.xcworkspace' -maxdepth 1 | head -n 1)
+          xcodebuild -workspace "$workspace" -scheme '${{ inputs.scheme }}' -sdk macosx test -allowProvisioningUpdates \
+          -resultBundlePath log/TestResults.xcresult \
+          ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }} | xcbeautify
+        elif [ -f project.yml ] && ls *.xcodeproj >/dev/null 2>&1; then
+          project=$(find . -name '*.xcodeproj' -maxdepth 1 | head -n 1)
+          xcodebuild -project "$project" -scheme '${{ inputs.scheme }}' -sdk macosx test -allowProvisioningUpdates \
+          -resultBundlePath log/TestResults.xcresult \
+          ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }} | xcbeautify
+        else
+          swift test
+        fi
+      shell: bash -leo pipefail {0}
+      if: inputs.platform == 'mac' && steps.test-macos.outcome == 'failure' && env.RETRY_BUILD == 'true'
+    - name: Show Test Failures (macOS) (Retry)
+      run: python3 ${{ github.action_path }}/../shared-scripts/show-test-failures.py
+      shell: bash -leo pipefail {0}
+      continue-on-error: true
+      if: steps.retry-macos.outcome == 'failure'
+    - name: Abort Workflow (macOS Retry Failed)
+      run: exit 1
+      shell: bash -leo pipefail {0}
+      if: steps.retry-macos.outcome == 'failure'
+    - name: Abort Workflow (macOS Non-Recoverable)
+      run: exit 1
+      shell: bash -leo pipefail {0}
+      if: inputs.platform == 'mac' && steps.test-macos.outcome == 'failure' && env.RETRY_BUILD != 'true'
