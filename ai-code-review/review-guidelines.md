@@ -197,13 +197,15 @@ Structure your review as a Markdown comment with the following format:
 
 | Category | Count |
 |----------|-------|
+| Requirements | X |
 | Possible Bug | X |
 | Improvement | X |
 | Convention | X |
 | Security | X |
 | Testing | X |
+| [Other as needed] | X |
 
 > Reviewed by AI using OpenCode
 ```
 
-Categories for suggestions: **Possible Bug**, **Improvement**, **Convention**, **Security**, **Testing**
+Categories for suggestions: **Requirements**, **Possible Bug**, **Improvement**, **Convention**, **Security**, **Testing**, or any other category that fits the issue.
