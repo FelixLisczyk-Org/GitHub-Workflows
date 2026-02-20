@@ -10,12 +10,15 @@ import subprocess
 import sys
 
 clear_derived_data_errors = [
-    "ld: symbol(s) not found",
-    "Undefined symbol: type metadata accessor",
     "Underlying Error: Test crashed with signal abrt before starting test execution.",
     "compiled with an older version of the compiler",  # Compiler version too new
     "cannot be imported by the Swift",  # Compiler version too old, e.g. 'Module compiled with Swift 6.2 cannot be imported by the Swift 6.1.2 compiler'
     "no such file or directory" # no such file or directory: '/Users/felix/Library/Developer/Xcode/DerivedData/SnipNotes-agjjroxsurolhibhbioigwxxcpzx/Build/Products/Debug-iphonesimulator/cmark_gfm.framework/cmark_gfm'
+]
+
+clear_derived_data_and_tuist_cache_errors = [
+    "ld: symbol(s) not found",
+    "Undefined symbol: type metadata accessor",
 ]
 
 simulator_errors = [
@@ -44,6 +47,24 @@ retry_errors = [
     "Segmentation fault",
     "error: stat",
 ]
+
+
+def handle_derived_data_and_tuist_cache_error(err):
+    """Handle linker errors by clearing both Xcode derived data and Tuist cache"""
+    print(f"Found linker error requiring derived data and tuist cache clearing: {err}")
+    os.system(f"{os.path.dirname(__file__)}/clear-xcode-derived-data.sh")
+    tuist_cache_path = os.path.expanduser("~/.cache/tuist")
+    if os.path.exists(tuist_cache_path):
+        print(f"Clearing global tuist cache at {tuist_cache_path}")
+        os.system(f"rm -rf {tuist_cache_path}")
+    project_tuist_path = "Tuist/.build"
+    if os.path.exists(project_tuist_path):
+        print(f"Clearing project tuist cache at {project_tuist_path}")
+        os.system(f"rm -rf {project_tuist_path}")
+    if os.path.exists("Tuist.swift"):
+        print("Regenerating tuist cache")
+        os.system("tuist install && tuist cache && tuist generate --no-open")
+    set_retry_build()
 
 
 def handle_derived_data_error(err):
@@ -101,6 +122,11 @@ def process_errors(error_messages):
     if isinstance(error_messages, str):
         error_messages = [error_messages]
     for error_message in error_messages:
+
+        # Check for linker errors that require clearing both derived data and tuist cache
+        for error in clear_derived_data_and_tuist_cache_errors:
+            if error in error_message:
+                handle_derived_data_and_tuist_cache_error(error)
 
         # Check for errors that require clearing derived data
         for error in clear_derived_data_errors:
