@@ -41,6 +41,10 @@ simulator_errors = [
 
 clear_tuist_cache_errors = ["Underlying Error: Crash", "Failed to load the test bundle"]
 
+recreate_simulators_errors = [
+    "Unable to boot device because it cannot be located on disk",
+]
+
 retry_errors = [
     "The Xcode build system has crashed",
     "Command CodeSign failed with a nonzero exit code",
@@ -90,6 +94,22 @@ def handle_simulator_error(err):
     set_retry_build()
 
 
+def handle_recreate_simulators_error(err):
+    """Handle corrupt simulator errors by quitting Xcode, Simulator, Instruments, killing CoreSimulatorService, and removing the entire CoreSimulator directory so simulators are recreated fresh"""
+    print(f"Found simulator error requiring full recreate: {err}")
+    commands = [
+        "osascript -e 'quit app \"Xcode\"'",
+        "osascript -e 'quit app \"Simulator\"'",
+        "osascript -e 'quit app \"Instruments\"'",
+        "killall -9 com.apple.CoreSimulator.CoreSimulatorService",
+        "rm -rf ~/Library/Developer/CoreSimulator",
+    ]
+    for cmd in commands:
+        print(f"Executing: {cmd}")
+        os.system(cmd)
+    set_retry_build()
+
+
 def handle_tuist_cache_error(err):
     """Handle tuist cache errors by clearing the cache"""
     print(f"Found error that requires clearing tuist cache: {err}")
@@ -132,6 +152,11 @@ def process_errors(error_messages):
         for error in clear_derived_data_errors:
             if error in error_message:
                 handle_derived_data_error(error)
+
+        # Check for errors that require recreating simulators from scratch
+        for error in recreate_simulators_errors:
+            if error in error_message:
+                handle_recreate_simulators_error(error)
 
         # Check for errors that require simulator reset
         for error in simulator_errors:
