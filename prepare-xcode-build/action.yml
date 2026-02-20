@@ -85,3 +85,11 @@ runs:
       run: bundle install
       shell: bash -leo pipefail {0}
       if: steps.check_files.outputs.files_exists == 'true'
+    - name: Tuist Cache (Restore)
+      uses: actions/cache/restore@v4
+      with:
+        path: Tuist/.build
+        key: ${{ runner.os }}-tuist-${{ hashFiles('Tuist/Package.resolved') }}
+        restore-keys: |
+          ${{ runner.os }}-tuist-
+      if: hashFiles('Tuist/Package.resolved') != ''

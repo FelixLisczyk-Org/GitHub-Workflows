@@ -38,3 +38,9 @@ runs:
         git config --global --remove-section safe || echo "[safe] section not found"
       shell: bash -leo pipefail {0}
       if: always()
+    - name: Tuist Cache (Save)
+      uses: actions/cache/save@v4
+      with:
+        path: Tuist/.build
+        key: ${{ runner.os }}-tuist-${{ hashFiles('Tuist/Package.resolved') }}
+      if: job.status == 'success' && hashFiles('Tuist/Package.resolved') != ''
