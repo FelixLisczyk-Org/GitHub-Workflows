@@ -15,6 +15,7 @@ clear_derived_data_errors = [
     "cannot be imported by the Swift",  # Compiler version too old, e.g. 'Module compiled with Swift 6.2 cannot be imported by the Swift 6.1.2 compiler'
     "no such file or directory", # no such file or directory: '/Users/felix/Library/Developer/Xcode/DerivedData/SnipNotes-agjjroxsurolhibhbioigwxxcpzx/Build/Products/Debug-iphonesimulator/cmark_gfm.framework/cmark_gfm'
     "mtime changed",  # Stale module cache after Xcode update
+    "tapi error: missing required architecture",  # Stale TBD file in EagerLinkingTBDs missing architecture slice
 ]
 
 clear_derived_data_and_tuist_cache_errors = [
