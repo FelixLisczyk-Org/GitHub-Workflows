@@ -145,35 +145,36 @@ def process_errors(error_messages):
     if isinstance(error_messages, str):
         error_messages = [error_messages]
     for error_message in error_messages:
+        error_message_lower = error_message.lower()
 
         # Check for linker errors that require clearing both derived data and tuist cache
         for error in clear_derived_data_and_tuist_cache_errors:
-            if error in error_message:
+            if error.lower() in error_message_lower:
                 handle_derived_data_and_tuist_cache_error(error)
 
         # Check for errors that require clearing derived data
         for error in clear_derived_data_errors:
-            if error in error_message:
+            if error.lower() in error_message_lower:
                 handle_derived_data_error(error)
 
         # Check for errors that require recreating simulators from scratch
         for error in recreate_simulators_errors:
-            if error in error_message:
+            if error.lower() in error_message_lower:
                 handle_recreate_simulators_error(error)
 
         # Check for errors that require simulator reset
         for error in simulator_errors:
-            if error in error_message:
+            if error.lower() in error_message_lower:
                 handle_simulator_error(error)
 
         # Check for errors that require clearing tuist cache
         for error in clear_tuist_cache_errors:
-            if error in error_message:
+            if error.lower() in error_message_lower:
                 handle_tuist_cache_error(error)
 
         # Check for regular retry errors
         for error in retry_errors:
-            if error in error_message:
+            if error.lower() in error_message_lower:
                 handle_regular_error(error)
 
 
