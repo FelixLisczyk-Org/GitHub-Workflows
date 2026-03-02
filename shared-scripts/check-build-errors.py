@@ -40,6 +40,7 @@ simulator_errors = [
     "Unable to run test class",
     "Connection interrupted",
     "Application failed preflight checks",  # Simulator busy/locked during app launch
+    "log hasn't finished recording after waiting",  # Result bundle log write timeout
 ]
 
 clear_tuist_cache_errors = ["Underlying Error: Crash", "Failed to load the test bundle"]
