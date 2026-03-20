@@ -20,7 +20,7 @@ runs:
   using: "composite"
   steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         fetch-depth: 0 # Required for scripts that access multiple branches, e.g. `increment-build-number.sh`
         ref: ${{ inputs.branch || '' }}
@@ -35,7 +35,7 @@ runs:
       shell: bash -leo pipefail {0}
       if: contains(runner.workspace, '/Users/runner/') == false
     - name: (Cloud) Select Xcode Version
-      uses: maxim-lobanov/setup-xcode@v1
+      uses: maxim-lobanov/setup-xcode@v1.7.0
       with:
         xcode-version: latest-stable
       if: contains(runner.workspace, '/Users/runner/')
@@ -44,13 +44,13 @@ runs:
       shell: bash -leo pipefail {0}
     - name: (Cloud) Import Development Certificate
       id: create_keychain
-      uses: apple-actions/import-codesign-certs@v5.0.3
+      uses: apple-actions/import-codesign-certs@v6
       with:
         p12-file-base64: ${{ inputs.p12_file_development }}
         p12-password: ${{ inputs.p12_file_development_password }}
       if: contains(runner.workspace, '/Users/runner/') && inputs.p12_file_development != '' && inputs.p12_file_development_password != ''
     - name: (Cloud) Import Distribution Certificate
-      uses: apple-actions/import-codesign-certs@v5.0.3
+      uses: apple-actions/import-codesign-certs@v6
       with:
         create-keychain: false
         keychain-password: "${{ steps.create_keychain.outputs.keychain-password }}"
@@ -58,7 +58,7 @@ runs:
         p12-password: ${{ inputs.p12_file_distribution_password }}
       if: contains(runner.workspace, '/Users/runner/') && inputs.p12_file_distribution != '' && inputs.p12_file_distribution_password != ''
     - name: (Cloud) Load SSH Private Key
-      uses: webfactory/ssh-agent@v0.7.0
+      uses: webfactory/ssh-agent@v0.10.0
       with:
         ssh-private-key: ${{ inputs.ssh_private_key }}
       if: contains(runner.workspace, '/Users/runner/') && inputs.ssh_private_key != ''
@@ -76,17 +76,12 @@ runs:
         brew install sourcery swiftgen tuist xcodegen xcbeautify
       shell: bash -leo pipefail {0}
       if: contains(runner.workspace, '/Users/runner/')
-    - name: Check if Gemfile exists
-      id: check_files
-      uses: andstor/file-existence-action@v3
-      with:
-        files: "Gemfile"
     - name: Install fastlane
       run: bundle install
       shell: bash -leo pipefail {0}
-      if: steps.check_files.outputs.files_exists == 'true'
+      if: hashFiles('Gemfile') != ''
     - name: Tuist Cache (Restore)
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@v5
       with:
         path: Tuist/.build
         key: ${{ runner.os }}-tuist-${{ hashFiles('Tuist/Package.resolved') }}

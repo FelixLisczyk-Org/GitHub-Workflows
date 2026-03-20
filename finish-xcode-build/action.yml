@@ -12,7 +12,7 @@ runs:
       shell: bash -leo pipefail {0}
       if: job.status == 'failure' && contains(runner.workspace, '/Users/runner/')
     - name: (Cloud) On Failure - Upload Workspace as Build Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: workspace
         path: workspace.zip
@@ -39,7 +39,7 @@ runs:
       shell: bash -leo pipefail {0}
       if: always()
     - name: Tuist Cache (Save)
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@v5
       with:
         path: Tuist/.build
         key: ${{ runner.os }}-tuist-${{ hashFiles('Tuist/Package.resolved') }}

@@ -47,7 +47,12 @@ runs:
         retry_failed_tests: ${{ inputs.retry_failed_tests }}
       if: ${{ inputs.skip_tests != 'true' }}
     - name: Commit & Push changes
-      uses: actions-js/push@master
-      with:
-        github_token: ${{ inputs.github_token }}
-        message: Updated dependencies [skip ci]
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add -A
+        git diff --staged --quiet || git commit -m "Updated dependencies [skip ci]"
+        git push
+      shell: bash -leo pipefail {0}
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
