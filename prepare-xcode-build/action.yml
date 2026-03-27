@@ -73,7 +73,7 @@ runs:
     - name: (Cloud) Install Build Tools
       run: |
         brew update
-        brew install sourcery swiftgen tuist xcodegen xcbeautify
+        brew install sourcery swiftgen tuist xcbeautify
       shell: bash -leo pipefail {0}
       if: contains(runner.workspace, '/Users/runner/')
     - name: Install fastlane

@@ -21,9 +21,7 @@ runs:
   steps:
     - name: Generate Xcode Project
       run: |
-        if [ -f project.yml ]; then
-          xcodegen
-        elif [ -f Tuist.swift ]; then
+        if [ -f Tuist.swift ]; then
           tuist install && tuist cache && tuist generate --no-open
         fi
       shell: bash -leo pipefail {0}
@@ -32,10 +30,7 @@ runs:
       shell: bash -leo pipefail {0}
     - name: Update Host App Dependencies
       run: |
-        if [ -f project.yml ]; then
-          ${{ github.action_path }}/../shared-scripts/clear-xcode-cache.sh
-          xcodebuild -resolvePackageDependencies
-        elif [ -f Tuist.swift ]; then
+        if [ -f Tuist.swift ]; then
           tuist install --update
         fi
       shell: bash -leo pipefail {0}

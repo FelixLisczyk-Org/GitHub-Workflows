@@ -15,9 +15,7 @@ runs:
   steps:
     - name: Generate Xcode Project
       run: |
-        if [ -f project.yml ]; then
-          xcodegen
-        elif [ -f Tuist.swift ]; then
+        if [ -f Tuist.swift ]; then
           tuist install && tuist cache && tuist generate --no-open
         fi
       shell: bash -leo pipefail {0}
@@ -31,11 +29,6 @@ runs:
         if [ -f Tuist.swift ] && ls *.xcworkspace >/dev/null 2>&1; then
           workspace=$(find . -name '*.xcworkspace' -maxdepth 1 | head -n 1)
           xcodebuild -workspace "$workspace" -scheme '${{ inputs.scheme }}' -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test \
-          -resultBundlePath log/TestResults.xcresult \
-          ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }} | xcbeautify
-        elif [ -f project.yml ] && ls *.xcodeproj >/dev/null 2>&1; then
-          project=$(find . -name '*.xcodeproj' -maxdepth 1 | head -n 1)
-          xcodebuild -project "$project" -scheme '${{ inputs.scheme }}' -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test \
           -resultBundlePath log/TestResults.xcresult \
           ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }} | xcbeautify
         else
@@ -60,11 +53,6 @@ runs:
         if [ -f Tuist.swift ] && ls *.xcworkspace >/dev/null 2>&1; then
           workspace=$(find . -name '*.xcworkspace' -maxdepth 1 | head -n 1)
           xcodebuild -workspace "$workspace" -scheme '${{ inputs.scheme }}' -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test \
-          -resultBundlePath log/TestResults.xcresult \
-          ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }} | xcbeautify
-        elif [ -f project.yml ] && ls *.xcodeproj >/dev/null 2>&1; then
-          project=$(find . -name '*.xcodeproj' -maxdepth 1 | head -n 1)
-          xcodebuild -project "$project" -scheme '${{ inputs.scheme }}' -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test \
           -resultBundlePath log/TestResults.xcresult \
           ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }} | xcbeautify
         else
@@ -94,11 +82,6 @@ runs:
           xcodebuild -workspace "$workspace" -scheme '${{ inputs.scheme }}' -sdk macosx test -allowProvisioningUpdates \
           -resultBundlePath log/TestResults.xcresult \
           ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }} | xcbeautify
-        elif [ -f project.yml ] && ls *.xcodeproj >/dev/null 2>&1; then
-          project=$(find . -name '*.xcodeproj' -maxdepth 1 | head -n 1)
-          xcodebuild -project "$project" -scheme '${{ inputs.scheme }}' -sdk macosx test -allowProvisioningUpdates \
-          -resultBundlePath log/TestResults.xcresult \
-          ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }} | xcbeautify
         else
           swift test
         fi
@@ -121,11 +104,6 @@ runs:
         if [ -f Tuist.swift ] && ls *.xcworkspace >/dev/null 2>&1; then
           workspace=$(find . -name '*.xcworkspace' -maxdepth 1 | head -n 1)
           xcodebuild -workspace "$workspace" -scheme '${{ inputs.scheme }}' -sdk macosx test -allowProvisioningUpdates \
-          -resultBundlePath log/TestResults.xcresult \
-          ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }} | xcbeautify
-        elif [ -f project.yml ] && ls *.xcodeproj >/dev/null 2>&1; then
-          project=$(find . -name '*.xcodeproj' -maxdepth 1 | head -n 1)
-          xcodebuild -project "$project" -scheme '${{ inputs.scheme }}' -sdk macosx test -allowProvisioningUpdates \
           -resultBundlePath log/TestResults.xcresult \
           ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }} | xcbeautify
         else
