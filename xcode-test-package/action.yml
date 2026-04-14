@@ -22,6 +22,7 @@ runs:
     - name: Run SwiftGen
       run: |
         if [ -f swiftgen.yml ]; then
+          grep -E '^\s+output:' swiftgen.yml | awk '{print $2}' | xargs -I{} dirname {} | sort -u | xargs mkdir -p
           swiftgen config run --config swiftgen.yml
         fi
       shell: bash -leo pipefail {0}
