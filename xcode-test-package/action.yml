@@ -19,6 +19,12 @@ runs:
           tuist install && tuist cache && tuist generate --no-open
         fi
       shell: bash -leo pipefail {0}
+    - name: Run SwiftGen
+      run: |
+        if [ -f swiftgen.yml ]; then
+          swiftgen config run --config swiftgen.yml
+        fi
+      shell: bash -leo pipefail {0}
     - name: Prepare Log Directory
       run: mkdir -p log && [ -e log/TestResults.xcresult ] && rm -rf log/TestResults.xcresult || true
       shell: bash -leo pipefail {0}
