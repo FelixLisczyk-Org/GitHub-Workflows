@@ -40,7 +40,7 @@ inputs:
     default: "fireworks-ai"
   model:
     description: "Model identifier (format: provider/model-id)"
-    default: "fireworks-ai/accounts/fireworks/models/kimi-k2p5"
+    default: "fireworks-ai/accounts/fireworks/models/kimi-k2p6"
 
 runs:
   using: "composite"
