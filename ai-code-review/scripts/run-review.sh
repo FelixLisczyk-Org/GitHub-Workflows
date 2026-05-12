@@ -20,6 +20,7 @@ case "${PROVIDER}" in
   openai)       export OPENAI_API_KEY="${API_KEY}" ;;
   openrouter)   export OPENROUTER_API_KEY="${API_KEY}" ;;
   groq)         export GROQ_API_KEY="${API_KEY}" ;;
+  ollama)       export OLLAMA_API_KEY="${API_KEY}" ;;
   *)
     echo "::warning::Unknown provider '${PROVIDER}', setting generic API key env vars"
     export OPENAI_API_KEY="${API_KEY}"
@@ -99,13 +100,35 @@ echo "Context file: $(wc -c < "${CONTEXT_FILE}") bytes"
 export OPENCODE_DISABLE_PROJECT_CONFIG=true
 export OPENCODE_DISABLE_AUTOUPDATE=true
 
-export OPENCODE_CONFIG_CONTENT=$(cat <<JSONEOF
+if [ "${PROVIDER}" = "ollama" ]; then
+  export OPENCODE_CONFIG_CONTENT=$(cat <<JSONEOF
+{
+  "\$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama Cloud",
+      "options": {
+        "baseURL": "https://ollama.com/v1"
+      },
+      "models": {
+        "${MODEL}": { "name": "${MODEL}" }
+      }
+    }
+  },
+  "model": "ollama/${MODEL}"
+}
+JSONEOF
+)
+else
+  export OPENCODE_CONFIG_CONTENT=$(cat <<JSONEOF
 {
   "\$schema": "https://opencode.ai/config.json",
   "model": "${MODEL}"
 }
 JSONEOF
 )
+fi
 
 # --- Run OpenCode ---
 echo "::group::Running AI Code Review"

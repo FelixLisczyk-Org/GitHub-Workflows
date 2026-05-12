@@ -30,16 +30,26 @@ description: Run AI-powered code review on pull requests using OpenCode
 #             model: anthropic/claude-sonnet-4-5-20250929
 #           env:
 #             GH_TOKEN: ${{ github.token }}
+#
+# To use Ollama Cloud (no local Ollama installation required):
+#
+#         - uses: <org>/GitHub-Workflows/ai-code-review@main
+#           with:
+#             api_key: ${{ secrets.OLLAMA_API_KEY }}
+#             provider: ollama
+#             model: kimi-k2.6:cloud
+#           env:
+#             GH_TOKEN: ${{ github.token }}
 
 inputs:
   api_key:
     description: "API key for the LLM provider"
     required: true
   provider:
-    description: "LLM provider name (e.g., fireworks-ai, anthropic, openai, openrouter, groq)"
+    description: "LLM provider name (e.g., fireworks-ai, anthropic, openai, openrouter, groq, ollama)"
     default: "fireworks-ai"
   model:
-    description: "Model identifier (format: provider/model-id)"
+    description: "Model identifier. For most providers: provider/model-id. For ollama: model-name:cloud (e.g. kimi-k2.6:cloud)"
     default: "fireworks-ai/accounts/fireworks/models/kimi-k2p6"
 
 runs:
