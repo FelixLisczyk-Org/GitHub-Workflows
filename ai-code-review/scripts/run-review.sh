@@ -109,7 +109,8 @@ if [ "${PROVIDER}" = "ollama" ]; then
       "npm": "@ai-sdk/openai-compatible",
       "name": "Ollama Cloud",
       "options": {
-        "baseURL": "https://ollama.com/v1"
+        "baseURL": "https://ollama.com/v1",
+        "apiKey": "${API_KEY}"
       },
       "models": {
         "${MODEL}": { "name": "${MODEL}" }
