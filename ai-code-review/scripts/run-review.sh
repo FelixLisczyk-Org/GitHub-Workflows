@@ -121,6 +121,29 @@ if [ "${PROVIDER}" = "ollama" ]; then
 }
 JSONEOF
 )
+elif [ "${PROVIDER}" = "fireworks-ai" ]; then
+  FIREWORKS_MODEL="${MODEL#fireworks-ai/}"
+
+  export OPENCODE_CONFIG_CONTENT=$(cat <<JSONEOF
+{
+  "\$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "fireworks-ai": {
+      "models": {
+        "${FIREWORKS_MODEL}": {
+          "variants": {
+            "max": {
+              "reasoningEffort": "xhigh"
+            }
+          }
+        }
+      }
+    }
+  },
+  "model": "fireworks-ai/${FIREWORKS_MODEL}"
+}
+JSONEOF
+)
 else
   export OPENCODE_CONFIG_CONTENT=$(cat <<JSONEOF
 {
@@ -140,6 +163,7 @@ STDERR_FILE=$(mktemp)
 
 # Pass a short prompt; OpenCode reads context via its own file tools
 opencode run \
+  --variant max \
   "You are performing an AI code review on a pull request. Read the file at ${CONTEXT_FILE} for the PR description, ticket context, and diff. Read the file at ${GUIDELINES_FILE} for review guidelines and output format. Then: 1) For each changed file in the diff, use your read tools to explore surrounding code for context. 2) Apply the review guidelines to identify issues. 3) Output ONLY the review Markdown in the format specified in the guidelines — no preamble." \
   > "${REVIEW_FILE}" 2>"${STDERR_FILE}" || true
 
