@@ -59,13 +59,24 @@ fi
 
 # --- Fetch PR comments for Linear ticket context ---
 echo "Fetching PR comments for ticket context..."
-PR_COMMENTS=$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --json comments --jq '.comments[].body' 2>/dev/null || true)
-
-# Extract Linear bot comment (usually contains ticket description)
+PR_COMMENTS=""
 LINEAR_CONTEXT=""
-if [ -n "${PR_COMMENTS}" ]; then
-  LINEAR_CONTEXT=$(echo "${PR_COMMENTS}" | grep -A 1000 -i "linear" | head -200 || true)
-fi
+for attempt in 1 2 3 4; do
+  PR_COMMENTS=$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --json comments --jq '.comments[].body' 2>/dev/null || true)
+
+  if [ -n "${PR_COMMENTS}" ]; then
+    LINEAR_CONTEXT=$(echo "${PR_COMMENTS}" | grep -A 1000 -i "linear" | head -200 || true)
+    if [ -n "${LINEAR_CONTEXT}" ]; then
+      echo "Found Linear ticket context on attempt ${attempt}."
+      break
+    fi
+  fi
+
+  if [ "${attempt}" -lt 4 ]; then
+    echo "Linear ticket context not available yet (attempt ${attempt}/4). Retrying in 30s..."
+    sleep 30
+  fi
+done
 
 # Also get PR body which often contains ticket links
 PR_BODY=$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --json body --jq '.body' 2>/dev/null || true)
