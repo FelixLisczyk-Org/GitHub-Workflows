@@ -50,7 +50,7 @@ inputs:
     default: "fireworks-ai"
   model:
     description: "Model identifier. For most providers: provider/model-id. For ollama: model-name:cloud (e.g. kimi-k2.6:cloud)"
-    default: "fireworks-ai/accounts/fireworks/models/deepseek-v4-flash"
+    default: "fireworks-ai/accounts/fireworks/models/minimax-m3"
 
 runs:
   using: "composite"
