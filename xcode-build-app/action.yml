@@ -22,6 +22,10 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Resolve Swift Package Dependencies
+      if: ${{ inputs.update_deps == 'true' }}
+      run: tuist install --update --quiet
+      shell: bash -leo pipefail {0}
     - name: Build and Upload App
       id: build-app
       continue-on-error: true
