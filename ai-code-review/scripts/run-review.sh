@@ -115,6 +115,9 @@ if [ "${PROVIDER}" = "ollama" ]; then
   export OPENCODE_CONFIG_CONTENT=$(cat <<JSONEOF
 {
   "\$schema": "https://opencode.ai/config.json",
+  "tools": {
+    "bash": false
+  },
   "provider": {
     "ollama": {
       "npm": "@ai-sdk/openai-compatible",
@@ -138,6 +141,9 @@ elif [ "${PROVIDER}" = "fireworks-ai" ]; then
   export OPENCODE_CONFIG_CONTENT=$(cat <<JSONEOF
 {
   "\$schema": "https://opencode.ai/config.json",
+  "tools": {
+    "bash": false
+  },
   "provider": {
     "fireworks-ai": {
       "models": {
@@ -159,6 +165,9 @@ else
   export OPENCODE_CONFIG_CONTENT=$(cat <<JSONEOF
 {
   "\$schema": "https://opencode.ai/config.json",
+  "tools": {
+    "bash": false
+  },
   "model": "${MODEL}"
 }
 JSONEOF
