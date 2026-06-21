@@ -101,13 +101,14 @@ def handle_simulator_error(err):
 
 
 def handle_recreate_simulators_error(err):
-    """Handle corrupt simulator errors by quitting Xcode, Simulator, Instruments, killing CoreSimulatorService, and removing the entire CoreSimulator directory so simulators are recreated fresh"""
+    """Handle corrupt simulator errors by quitting Xcode, Simulator, Instruments, killing CoreSimulatorService, killing stale DTServiceHub processes, and removing the entire CoreSimulator directory so simulators are recreated fresh"""
     print(f"Found simulator error requiring full recreate: {err}")
     commands = [
         "osascript -e 'quit app \"Xcode\"'",
         "osascript -e 'quit app \"Simulator\"'",
         "osascript -e 'quit app \"Instruments\"'",
         "killall -9 com.apple.CoreSimulator.CoreSimulatorService",
+        "killall -9 DTServiceHub",
         "rm -rf ~/Library/Developer/CoreSimulator",
     ]
     for cmd in commands:
