@@ -49,6 +49,13 @@ clear_tuist_cache_errors = ["Underlying Error: Crash", "Failed to load the test 
 recreate_simulators_errors = [
     "Unable to boot device because it cannot be located on disk",
     "The test runner hung before establishing connection",
+    # Corrupt simulator install database (IXPlaceholder state) — the partial reset in
+    # handle_simulator_error is insufficient (the placeholder error reappears on retry),
+    # so the simulators must be recreated from scratch. Checked before simulator_errors,
+    # which would otherwise match the surrounding "Failed to install or launch the test
+    # runner" message and trigger only the lighter reset.
+    "Failed to create app extension placeholder",
+    "Placeholder did not exist",
 ]
 
 retry_errors = [
