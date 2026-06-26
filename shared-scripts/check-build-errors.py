@@ -151,42 +151,41 @@ def handle_regular_error(err):
 
 
 def process_errors(error_messages):
-    """Process a list of error messages and handle them based on priority"""
+    """Process error messages and handle the single highest-priority match.
+
+    Priority is applied globally across all messages, not per-message. Xcode can
+    emit multiple errorSummaries for one failure (e.g. a short "Simulator device
+    failed to install the application" alongside a long "Placeholder did not exist"
+    message). Since the first matched handler calls set_retry_build() -> sys.exit(0),
+    matching per-message would let an earlier, lower-priority message win over a
+    later, higher-priority one. Joining the messages and checking categories in
+    priority order ensures the correct handler runs regardless of message order.
+    """
     # Accept both string and list input
     if isinstance(error_messages, str):
         error_messages = [error_messages]
-    for error_message in error_messages:
-        error_message_lower = error_message.lower()
+    combined = "\n".join(error_messages).lower()
 
-        # Check for linker errors that require clearing both derived data and tuist cache
-        for error in clear_derived_data_and_tuist_cache_errors:
-            if error.lower() in error_message_lower:
-                handle_derived_data_and_tuist_cache_error(error)
-
-        # Check for errors that require clearing derived data
-        for error in clear_derived_data_errors:
-            if error.lower() in error_message_lower:
-                handle_derived_data_error(error)
-
-        # Check for errors that require recreating simulators from scratch
-        for error in recreate_simulators_errors:
-            if error.lower() in error_message_lower:
-                handle_recreate_simulators_error(error)
-
-        # Check for errors that require simulator reset
-        for error in simulator_errors:
-            if error.lower() in error_message_lower:
-                handle_simulator_error(error)
-
-        # Check for errors that require clearing tuist cache
-        for error in clear_tuist_cache_errors:
-            if error.lower() in error_message_lower:
-                handle_tuist_cache_error(error)
-
-        # Check for regular retry errors
-        for error in retry_errors:
-            if error.lower() in error_message_lower:
-                handle_regular_error(error)
+    # Ordered highest-priority first; the first category to match wins.
+    handlers = [
+        # Linker errors that require clearing both derived data and tuist cache
+        (clear_derived_data_and_tuist_cache_errors, handle_derived_data_and_tuist_cache_error),
+        # Errors that require clearing derived data
+        (clear_derived_data_errors, handle_derived_data_error),
+        # Errors that require recreating simulators from scratch
+        (recreate_simulators_errors, handle_recreate_simulators_error),
+        # Errors that require a simulator reset
+        (simulator_errors, handle_simulator_error),
+        # Errors that require clearing tuist cache
+        (clear_tuist_cache_errors, handle_tuist_cache_error),
+        # Regular retry errors
+        (retry_errors, handle_regular_error),
+    ]
+    for error_list, handler in handlers:
+        for error in error_list:
+            if error.lower() in combined:
+                handler(error)  # calls set_retry_build() -> sys.exit(0)
+                return
 
 
 def get_xcresult_errors(xcresult_path):
