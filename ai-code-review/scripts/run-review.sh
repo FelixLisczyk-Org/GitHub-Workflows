@@ -195,24 +195,47 @@ echo "Workspace context file present: $(test -f "${WORKSPACE_CONTEXT_FILE}" && e
 echo "Workspace guidelines file present: $(test -f "${WORKSPACE_GUIDELINES_FILE}" && echo yes || echo no)"
 echo "::endgroup::"
 
-# Pass a short prompt; OpenCode reads context via its own file tools
-opencode run \
-  --variant max \
-  "You are performing an AI code review on a pull request. Read the file at ${WORKSPACE_CONTEXT_FILE} for the PR description, ticket context, and diff. Read the file at ${WORKSPACE_GUIDELINES_FILE} for review guidelines and output format. Then: 1) For each changed file in the diff, use your read tools to explore surrounding code for context. 2) Apply the review guidelines to identify issues. 3) Output ONLY the review Markdown in the format specified in the guidelines — no preamble." \
-  > "${REVIEW_FILE}" 2>"${STDERR_FILE}" || true
+# Pass a short prompt; OpenCode reads context via its own file tools.
+# The model occasionally ends its turn after a few tool calls without emitting
+# the final review Markdown, leaving stdout empty. Retry a few times before
+# giving up so a single empty turn doesn't waste the whole run.
+REVIEW_PROMPT="You are performing an AI code review on a pull request. Read the file at ${WORKSPACE_CONTEXT_FILE} for the PR description, ticket context, and diff. Read the file at ${WORKSPACE_GUIDELINES_FILE} for review guidelines and output format. Then: 1) For each changed file in the diff, use your read tools to explore surrounding code for context. 2) Apply the review guidelines to identify issues. 3) Output ONLY the review Markdown in the format specified in the guidelines — no preamble."
 
-# Show stderr for debugging (visible in GitHub Actions logs)
-if [ -s "${STDERR_FILE}" ]; then
-  echo "::warning::OpenCode stderr output:"
-  cat "${STDERR_FILE}"
-fi
+MAX_REVIEW_ATTEMPTS=3
+for attempt in $(seq 1 "${MAX_REVIEW_ATTEMPTS}"); do
+  echo "Running OpenCode (attempt ${attempt}/${MAX_REVIEW_ATTEMPTS})..."
+
+  : > "${REVIEW_FILE}"
+  : > "${STDERR_FILE}"
+
+  opencode run \
+    --variant max \
+    "${REVIEW_PROMPT}" \
+    > "${REVIEW_FILE}" 2>"${STDERR_FILE}" || true
+
+  # Show stderr for debugging (visible in GitHub Actions logs)
+  if [ -s "${STDERR_FILE}" ]; then
+    echo "::warning::OpenCode stderr output:"
+    cat "${STDERR_FILE}"
+  fi
+
+  if [ -s "${REVIEW_FILE}" ]; then
+    echo "OpenCode produced review output on attempt ${attempt}."
+    break
+  fi
+
+  if [ "${attempt}" -lt "${MAX_REVIEW_ATTEMPTS}" ]; then
+    echo "::warning::OpenCode produced no review output (attempt ${attempt}/${MAX_REVIEW_ATTEMPTS}). Retrying in 10s..."
+    sleep 10
+  fi
+done
 
 rm -f "${CONTEXT_FILE}" "${STDERR_FILE}"
 echo "::endgroup::"
 
 # --- Validate output ---
 if [ ! -s "${REVIEW_FILE}" ]; then
-  echo "::warning::OpenCode produced no review output."
+  echo "::warning::OpenCode produced no review output after ${MAX_REVIEW_ATTEMPTS} attempts."
   rm -f "${REVIEW_FILE}"
   exit 1
 fi
