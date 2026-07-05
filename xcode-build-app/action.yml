@@ -35,7 +35,9 @@ runs:
       run: python3 ${{ github.action_path }}/../shared-scripts/check-build-errors.py
       shell: bash -leo pipefail {0}
       if: ${{ steps.build-app.outcome == 'failure' }}
-    - name: Build and Upload App (Retry)
+    - name: Build and Upload App (Retry 1)
+      id: retry-build-app-1
+      continue-on-error: true
       run: bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} inc_version:false inc_build:false update_deps:false skip_publish:true skip_tests:${{ inputs.skip_tests }} clear_artifacts:false
       shell: bash -leo pipefail {0}
       if: ${{ steps.build-app.outcome == 'failure' && env.RETRY_BUILD == 'true' }}
@@ -43,3 +45,25 @@ runs:
       run: exit 1
       shell: bash -leo pipefail {0}
       if: ${{ steps.build-app.outcome == 'failure' && env.RETRY_BUILD != 'true' }}
+    - name: Reset Retry Flag
+      run: echo "RETRY_BUILD=false" >> "$GITHUB_ENV"
+      shell: bash -leo pipefail {0}
+      if: ${{ steps.retry-build-app-1.outcome == 'failure' }}
+    - name: Analyze Build Errors (Retry 1)
+      run: python3 ${{ github.action_path }}/../shared-scripts/check-build-errors.py
+      shell: bash -leo pipefail {0}
+      if: ${{ steps.retry-build-app-1.outcome == 'failure' }}
+    - name: Build and Upload App (Retry 2)
+      id: retry-build-app-2
+      continue-on-error: true
+      run: bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} inc_version:false inc_build:false update_deps:false skip_publish:true skip_tests:${{ inputs.skip_tests }} clear_artifacts:false
+      shell: bash -leo pipefail {0}
+      if: ${{ steps.retry-build-app-1.outcome == 'failure' && env.RETRY_BUILD == 'true' }}
+    - name: Abort Workflow (Retry 1 Non-recoverable build error)
+      run: exit 1
+      shell: bash -leo pipefail {0}
+      if: ${{ steps.retry-build-app-1.outcome == 'failure' && env.RETRY_BUILD != 'true' }}
+    - name: Abort Workflow (Retry 2 Failed)
+      run: exit 1
+      shell: bash -leo pipefail {0}
+      if: ${{ steps.retry-build-app-2.outcome == 'failure' }}
