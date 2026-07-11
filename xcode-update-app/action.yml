@@ -9,10 +9,22 @@ inputs:
     description: "Skip Running Tests"
     required: false
     default: false
+  ios_simulator_name:
+    description: "Preferred iOS simulator device name"
+    required: false
+    default: "iPhone 17 Pro"
 
 runs:
   using: "composite"
   steps:
+    - name: Select iOS Simulator Destination
+      run: |
+        destination=$(python3 "${{ github.action_path }}/../shared-scripts/select-ios-simulator-destination.py" "${{ inputs.ios_simulator_name }}")
+        echo "SCAN_DESTINATION=$destination" >> "$GITHUB_ENV"
+        echo "IOS_SIMULATOR_DESTINATION=$destination" >> "$GITHUB_ENV"
+        echo "Using iOS simulator destination: $destination"
+      shell: bash -leo pipefail {0}
+      if: inputs.platform == 'ios'
     - name: Update Dependencies
       id: update_deps
       continue-on-error: true

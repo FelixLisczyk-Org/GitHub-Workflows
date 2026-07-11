@@ -19,9 +19,21 @@ inputs:
   skip_tests:
     description: "Skip Tests"
     required: true
+  ios_simulator_name:
+    description: "Preferred iOS simulator device name"
+    required: false
+    default: "iPhone 17 Pro"
 runs:
   using: "composite"
   steps:
+    - name: Select iOS Simulator Destination
+      run: |
+        destination=$(python3 "${{ github.action_path }}/../shared-scripts/select-ios-simulator-destination.py" "${{ inputs.ios_simulator_name }}")
+        echo "SCAN_DESTINATION=$destination" >> "$GITHUB_ENV"
+        echo "IOS_SIMULATOR_DESTINATION=$destination" >> "$GITHUB_ENV"
+        echo "Using iOS simulator destination: $destination"
+      shell: bash -leo pipefail {0}
+      if: inputs.platform == 'ios'
     - name: Resolve Swift Package Dependencies
       if: ${{ inputs.update_deps == 'true' }}
       run: tuist install --update --quiet
