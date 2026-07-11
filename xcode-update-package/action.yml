@@ -15,6 +15,10 @@ inputs:
     description: "Skip Running Tests"
     required: false
     default: false
+  ios_simulator_name:
+    description: "Preferred iOS simulator device name"
+    required: false
+    default: "iPhone 17 Pro"
 
 runs:
   using: "composite"
@@ -40,6 +44,7 @@ runs:
         platform: ${{ inputs.platform }}
         scheme: ${{ inputs.scheme }}
         retry_failed_tests: ${{ inputs.retry_failed_tests }}
+        ios_simulator_name: ${{ inputs.ios_simulator_name }}
       if: ${{ inputs.skip_tests != 'true' }}
     - name: Commit & Push changes
       run: |

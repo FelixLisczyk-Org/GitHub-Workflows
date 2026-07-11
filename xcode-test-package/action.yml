@@ -9,10 +9,21 @@ inputs:
     description: "Retry Failed Tests"
     required: false
     default: false
+  ios_simulator_name:
+    description: "Preferred iOS simulator device name"
+    required: false
+    default: "iPhone 17 Pro"
 
 runs:
   using: "composite"
   steps:
+    - name: Select iOS Simulator Destination
+      run: |
+        destination=$(python3 "${{ github.action_path }}/../shared-scripts/select-ios-simulator-destination.py" "${{ inputs.ios_simulator_name }}")
+        echo "IOS_SIMULATOR_DESTINATION=$destination" >> "$GITHUB_ENV"
+        echo "Using iOS simulator destination: $destination"
+      shell: bash -leo pipefail {0}
+      if: inputs.platform == 'ios'
     - name: Generate Xcode Project
       run: |
         if [ -f Tuist.swift ]; then
@@ -35,7 +46,7 @@ runs:
       run: |
         if [ -f Tuist.swift ] && ls *.xcworkspace >/dev/null 2>&1; then
           workspace=$(find . -name '*.xcworkspace' -maxdepth 1 | head -n 1)
-          xcodebuild -workspace "$workspace" -scheme '${{ inputs.scheme }}' -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test \
+          xcodebuild -workspace "$workspace" -scheme '${{ inputs.scheme }}' -destination "$IOS_SIMULATOR_DESTINATION" test \
           -resultBundlePath log/TestResults.xcresult \
           ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }} | xcbeautify
         else
@@ -59,7 +70,7 @@ runs:
         rm -rf log/TestResults.xcresult
         if [ -f Tuist.swift ] && ls *.xcworkspace >/dev/null 2>&1; then
           workspace=$(find . -name '*.xcworkspace' -maxdepth 1 | head -n 1)
-          xcodebuild -workspace "$workspace" -scheme '${{ inputs.scheme }}' -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test \
+          xcodebuild -workspace "$workspace" -scheme '${{ inputs.scheme }}' -destination "$IOS_SIMULATOR_DESTINATION" test \
           -resultBundlePath log/TestResults.xcresult \
           ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }} | xcbeautify
         else
@@ -91,7 +102,7 @@ runs:
         rm -rf log/TestResults.xcresult
         if [ -f Tuist.swift ] && ls *.xcworkspace >/dev/null 2>&1; then
           workspace=$(find . -name '*.xcworkspace' -maxdepth 1 | head -n 1)
-          xcodebuild -workspace "$workspace" -scheme '${{ inputs.scheme }}' -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test \
+          xcodebuild -workspace "$workspace" -scheme '${{ inputs.scheme }}' -destination "$IOS_SIMULATOR_DESTINATION" test \
           -resultBundlePath log/TestResults.xcresult \
           ${{ inputs.retry_failed_tests && '-retry-tests-on-failure' || '' }} | xcbeautify
         else
