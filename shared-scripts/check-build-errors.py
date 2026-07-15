@@ -21,6 +21,11 @@ clear_derived_data_and_tuist_cache_errors = [
     "ld: symbol(s) not found",
     "no such file or directory",  # Missing file in DerivedData after dependency update; often caused by stale Tuist cache
     "Undefined symbol: type metadata accessor",
+    # Stale DerivedData/Tuist cache breaks an SPM package's generated module map (e.g. cmark-gfm),
+    # interrupting the test action before it starts. Matched both with and without the shell-style
+    # backslash-escaped space, since the escaping isn't consistent across xcodebuild output formats.
+    "PhaseScriptExecution Copy\\ Module\\ Map",
+    "PhaseScriptExecution Copy Module Map",
 ]
 
 simulator_errors = [
