@@ -1,0 +1,14 @@
+name: Cancel Active Workflows for Closed PR
+description: Cancel active workflow runs associated with a pull request when it closes
+
+runs:
+  using: "composite"
+  steps:
+    - name: Clean up active workflows for closed PR
+      run: "${{ github.action_path }}/scripts/cancel-pr-workflows.sh"
+      shell: bash -leo pipefail {0}
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${FAKE_GH_STATE_DIR:?FAKE_GH_STATE_DIR is required}"
+: "${1:?sleep delay is required}"
+
+printf '%s\n' "$1" >>"${FAKE_GH_STATE_DIR}/sleep.log"

@@ -1,0 +1,248 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${FAKE_GH_SCENARIO:?FAKE_GH_SCENARIO is required}"
+: "${FAKE_GH_STATE_DIR:?FAKE_GH_STATE_DIR is required}"
+
+mkdir -p "${FAKE_GH_STATE_DIR}"
+printf '%s' "$1" >>"${FAKE_GH_STATE_DIR}/calls.log"
+for argument in "${@:2}"; do
+  printf ' %s' "${argument}" >>"${FAKE_GH_STATE_DIR}/calls.log"
+done
+printf '\n' >>"${FAKE_GH_STATE_DIR}/calls.log"
+
+if [[ "${1:-}" != "api" ]]; then
+  printf 'fake gh only supports gh api\n' >&2
+  exit 2
+fi
+shift
+
+endpoint=""
+include=false
+method=GET
+paginate=false
+slurp=false
+while (( $# > 0 )); do
+  case "$1" in
+    --include)
+      include=true
+      ;;
+    --method)
+      shift
+      method=${1:?missing method}
+      ;;
+    --paginate)
+      paginate=true
+      ;;
+    --slurp)
+      slurp=true
+      ;;
+    *)
+      endpoint=$1
+      ;;
+  esac
+  shift
+done
+
+counter() {
+  local name=$1
+  local path="${FAKE_GH_STATE_DIR}/${name}.count"
+  local value=0
+
+  if [[ -f "${path}" ]]; then
+    value=$(<"${path}")
+  fi
+  value=$((value + 1))
+  printf '%d\n' "${value}" >"${path}"
+  printf '%d\n' "${value}"
+}
+
+respond() {
+  local body=${2:-}
+  local code=$1
+  local rate_limit_remaining=${4:-}
+  local rate_limit_reset=${5:-}
+  local retry_after=${3:-}
+
+  if [[ "${include}" == true ]]; then
+    printf 'HTTP/2.0 %s Fake\r\n' "${code}"
+    if [[ -n "${retry_after}" ]]; then
+      printf 'Retry-After: %s\r\n' "${retry_after}"
+    fi
+    if [[ -n "${rate_limit_remaining}" ]]; then
+      printf 'X-RateLimit-Remaining: %s\r\n' "${rate_limit_remaining}"
+    fi
+    if [[ -n "${rate_limit_reset}" ]]; then
+      printf 'X-RateLimit-Reset: %s\r\n' "${rate_limit_reset}"
+    fi
+    printf 'Content-Type: application/json\r\n\r\n'
+  fi
+  if [[ -n "${body}" ]]; then
+    printf '%s\n' "${body}"
+  fi
+
+  if (( code < 200 || code >= 300 )); then
+    printf 'gh: fake API failure (HTTP %s)\n' "${code}" >&2
+    return 1
+  fi
+}
+
+discovery_json() {
+  case "${FAKE_GH_SCENARIO}" in
+    selection)
+      printf '%s\n' '[{"workflow_runs":[{"id":101,"event":"pull_request","status":"completed","pull_requests":[{"number":7}]},{"id":102,"event":"pull_request","status":"in_progress","pull_requests":[{"number":8}]},{"id":9007199254740993,"event":"pull_request","status":"queued","pull_requests":[{"number":7}]},{"id":200,"event":"pull_request","status":"queued","pull_requests":[{"number":8},{"number":7}]},{"id":104,"event":"pull_request","status":"in_progress"},{"id":105,"event":"pull_request","status":"queued","pull_requests":[]},{"id":106,"event":"schedule","status":"in_progress","pull_requests":[]},{"id":107,"event":"release","status":"queued"}]},{"workflow_runs":[{"id":200,"event":"pull_request","status":"queued","pull_requests":[{"number":7}]},{"id":201,"event":"pull_request","status":"in_progress","pull_requests":[{"number":7}]},{"id":108,"event":"workflow_dispatch","status":"in_progress","pull_requests":[]},{"id":109,"event":"push","status":"queued"}]}]'
+      ;;
+    repeat)
+      if [[ -f "${FAKE_GH_STATE_DIR}/repeat.cancelled" ]]; then
+        printf '%s\n' '[{"workflow_runs":[{"id":301,"status":"completed","pull_requests":[{"number":7}]}]}]'
+      else
+        printf '%s\n' '[{"workflow_runs":[{"id":301,"status":"in_progress","pull_requests":[{"number":7}]}]}]'
+      fi
+      ;;
+    race)
+      printf '%s\n' '[{"workflow_runs":[{"id":401,"status":"in_progress","pull_requests":[{"number":7}]},{"id":402,"status":"queued","pull_requests":[{"number":7}]},{"id":403,"status":"in_progress","pull_requests":[{"number":7}]}]}]'
+      ;;
+    cancel_retry)
+      printf '%s\n' '[{"workflow_runs":[{"id":501,"status":"in_progress","pull_requests":[{"number":7}]}]}]'
+      ;;
+    rate_limit_403)
+      printf '%s\n' '[{"workflow_runs":[{"id":551,"status":"in_progress","pull_requests":[{"number":7}]}]}]'
+      ;;
+    rate_limit_reset)
+      printf '%s\n' '[{"workflow_runs":[{"id":552,"status":"in_progress","pull_requests":[{"number":7}]}]}]'
+      ;;
+    discovery_retry | discovery_rate_limit | discovery_auth | discovery_failure | no_match)
+      printf '%s\n' '[{"workflow_runs":[]}]'
+      ;;
+    auth_cancel)
+      printf '%s\n' '[{"workflow_runs":[{"id":601,"status":"in_progress","pull_requests":[{"number":7}]}]}]'
+      ;;
+    continue)
+      printf '%s\n' '[{"workflow_runs":[{"id":701,"status":"in_progress","pull_requests":[{"number":7}]},{"id":702,"status":"queued","pull_requests":[{"number":7}]}]}]'
+      ;;
+    malformed_filter)
+      printf '%s\n' '[{"workflow_runs":[{"id":801,"status":"in_progress","pull_requests":[7]}]}]'
+      ;;
+    malformed_discovery)
+      printf '%s\n' '[{"workflow_runs":{}}]'
+      ;;
+    *)
+      printf '%s\n' '[{"workflow_runs":[]}]'
+      ;;
+  esac
+}
+
+if [[ "${endpoint}" == *'/actions/runs?per_page=100' ]]; then
+  if [[ "${method}" != GET || "${paginate}" != true || "${slurp}" != true ]]; then
+    printf 'discovery must use GET, --paginate, and --slurp\n' >&2
+    exit 2
+  fi
+
+  case "${FAKE_GH_SCENARIO}" in
+    discovery_retry)
+      if (( $(counter discovery) == 1 )); then
+        printf 'gh: simulated transport failure\n' >&2
+        exit 1
+      fi
+      ;;
+    discovery_rate_limit)
+      if (( $(counter discovery) == 1 )); then
+        printf 'gh: API rate limit exceeded for fake user (HTTP 403)\n' >&2
+        exit 1
+      fi
+      ;;
+    discovery_auth)
+      respond 401
+      ;;
+    discovery_failure)
+      counter discovery >/dev/null
+      respond 500
+      ;;
+  esac
+  discovery_json
+  exit 0
+fi
+
+run_id=""
+if [[ "${endpoint}" =~ /actions/runs/([0-9]+)(/cancel)?$ ]]; then
+  run_id=${BASH_REMATCH[1]}
+fi
+
+if [[ "${method}" == POST && "${endpoint}" == */cancel ]]; then
+  case "${FAKE_GH_SCENARIO}:${run_id}" in
+    selection:200)
+      respond 202
+      ;;
+    selection:201)
+      respond 204
+      ;;
+    repeat:301)
+      touch "${FAKE_GH_STATE_DIR}/repeat.cancelled"
+      respond 202
+      ;;
+    race:401 | race:402)
+      respond 409
+      ;;
+    race:403)
+      respond 404
+      ;;
+    cancel_retry:501)
+      attempt=$(counter cancel_501)
+      if (( attempt == 1 )); then
+        respond 429
+      elif (( attempt == 2 )); then
+        respond 500
+      else
+        respond 202
+      fi
+      ;;
+    rate_limit_403:551)
+      attempt=$(counter cancel_551)
+      if (( attempt == 1 )); then
+        respond 403 '' 60
+      else
+        respond 202
+      fi
+      ;;
+    rate_limit_reset:552)
+      attempt=$(counter cancel_552)
+      if (( attempt == 1 )); then
+        reset_epoch=$(($(date +%s) + 90))
+        respond 429 '' '' 0 "${reset_epoch}"
+      else
+        respond 202
+      fi
+      ;;
+    auth_cancel:601)
+      respond 403
+      ;;
+    continue:701)
+      respond 422
+      ;;
+    continue:702)
+      respond 202
+      ;;
+    *)
+      respond 202
+      ;;
+  esac
+  exit 0
+fi
+
+if [[ "${method}" == GET ]]; then
+  case "${FAKE_GH_SCENARIO}:${run_id}" in
+    race:401)
+      respond 200 '{"id":401,"status":"completed"}'
+      ;;
+    race:402 | race:403)
+      respond 404
+      ;;
+    *)
+      respond 200 "{\"id\":${run_id:-0},\"status\":\"in_progress\"}"
+      ;;
+  esac
+  exit 0
+fi
+
+printf 'fake gh received unsupported request: %s %s\n' "${method}" "${endpoint}" >&2
+exit 2
