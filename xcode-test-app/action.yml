@@ -13,13 +13,22 @@ inputs:
   include_ui_tests:
     description: "Include UI Tests"
     default: false
+  retry_failed_tests:
+    description: "Retry each failed test case once within the Fastlane test invocation"
+    default: false
 runs:
   using: "composite"
   steps:
+    # `retry_failed_tests` is an Xcode test-case retry inside each Fastlane invocation. The
+    # infrastructure retries below rerun the entire lane only for classified build/environment failures.
+    - name: Reset Retry Flag
+      run: echo "RETRY_BUILD=false" >> "$GITHUB_ENV"
+      shell: bash -leo pipefail {0}
+      if: ${{ !cancelled() }}
     - name: Run Unit Tests
       id: build-app
       continue-on-error: true
-      run: bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} include_unit_tests:${{ inputs.include_unit_tests }} include_ui_tests:${{ inputs.include_ui_tests }}
+      run: bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} include_unit_tests:${{ inputs.include_unit_tests }} include_ui_tests:${{ inputs.include_ui_tests }} retry_failed_tests:${{ inputs.retry_failed_tests }}
       shell: bash -leo pipefail {0}
     - name: Show Test Failures
       run: python3 ${{ github.action_path }}/../shared-scripts/show-test-failures.py
@@ -30,13 +39,13 @@ runs:
       run: python3 ${{ github.action_path }}/../shared-scripts/check-build-errors.py
       shell: bash -leo pipefail {0}
       if: ${{ steps.build-app.outcome == 'failure' }}
-    - name: Run Unit Tests (Retry 1)
+    - name: Run Unit Tests (Infrastructure Retry 1)
       id: retry-tests-1
       continue-on-error: true
-      run: bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} include_unit_tests:${{ inputs.include_unit_tests }} include_ui_tests:${{ inputs.include_ui_tests }}
+      run: bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} include_unit_tests:${{ inputs.include_unit_tests }} include_ui_tests:${{ inputs.include_ui_tests }} retry_failed_tests:${{ inputs.retry_failed_tests }}
       shell: bash -leo pipefail {0}
       if: ${{ steps.build-app.outcome == 'failure' && env.RETRY_BUILD == 'true' }}
-    - name: Show Test Failures (Retry 1)
+    - name: Show Test Failures (Infrastructure Retry 1)
       run: python3 ${{ github.action_path }}/../shared-scripts/show-test-failures.py
       shell: bash -leo pipefail {0}
       continue-on-error: true
@@ -49,26 +58,26 @@ runs:
       run: echo "RETRY_BUILD=false" >> "$GITHUB_ENV"
       shell: bash -leo pipefail {0}
       if: ${{ steps.retry-tests-1.outcome == 'failure' }}
-    - name: Analyze Build Errors (Retry 1)
+    - name: Analyze Build Errors (Infrastructure Retry 1)
       run: python3 ${{ github.action_path }}/../shared-scripts/check-build-errors.py
       shell: bash -leo pipefail {0}
       if: ${{ steps.retry-tests-1.outcome == 'failure' }}
-    - name: Run Unit Tests (Retry 2)
+    - name: Run Unit Tests (Infrastructure Retry 2)
       id: retry-tests-2
       continue-on-error: true
-      run: bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} include_unit_tests:${{ inputs.include_unit_tests }} include_ui_tests:${{ inputs.include_ui_tests }}
+      run: bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} include_unit_tests:${{ inputs.include_unit_tests }} include_ui_tests:${{ inputs.include_ui_tests }} retry_failed_tests:${{ inputs.retry_failed_tests }}
       shell: bash -leo pipefail {0}
       if: ${{ steps.retry-tests-1.outcome == 'failure' && env.RETRY_BUILD == 'true' }}
-    - name: Show Test Failures (Retry 2)
+    - name: Show Test Failures (Infrastructure Retry 2)
       run: python3 ${{ github.action_path }}/../shared-scripts/show-test-failures.py
       shell: bash -leo pipefail {0}
       continue-on-error: true
       if: ${{ steps.retry-tests-2.outcome == 'failure' }}
-    - name: Abort Workflow (Retry 1 Non-recoverable build error)
+    - name: Abort Workflow (Infrastructure Retry 1 Non-recoverable build error)
       run: exit 1
       shell: bash -leo pipefail {0}
       if: ${{ steps.retry-tests-1.outcome == 'failure' && env.RETRY_BUILD != 'true' }}
-    - name: Abort Workflow (Retry 2 Failed)
+    - name: Abort Workflow (Infrastructure Retry 2 Failed)
       run: exit 1
       shell: bash -leo pipefail {0}
       if: ${{ steps.retry-tests-2.outcome == 'failure' }}
