@@ -16,4 +16,7 @@ runs:
         echo "${{ inputs.runner_root_password }}" | sudo -S xcode-select -s "${{ inputs.original_xcode_path }}"
         xcodebuild -version
       shell: bash -leo pipefail {0}
-      if: contains(runner.workspace, '/Users/runner/') == false
+      # An empty path means the prepare action failed before it selected an Xcode
+      # version. finish-xcode-build runs with `if: always()`, so skip rather than
+      # fail `xcode-select -s ""` and mask the original error.
+      if: contains(runner.workspace, '/Users/runner/') == false && inputs.original_xcode_path != ''

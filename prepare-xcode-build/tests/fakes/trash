@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Stand-in for the `trash` CLI that the login shell profile puts behind `rm`.
+# Mirrors the behaviour that broke CI: a missing path is a hard error (exit 5),
+# where `rm -rf` would have succeeded silently.
+set -uo pipefail
+
+: "${FAKE_TRASH_STATE_DIR:?FAKE_TRASH_STATE_DIR is required}"
+
+mkdir -p "${FAKE_TRASH_STATE_DIR}"
+printf 'trash %s\n' "$*" >>"${FAKE_TRASH_STATE_DIR}/trash.log"
+
+for path in "$@"; do
+  if [[ ! -e "${path}" ]]; then
+    printf 'trash: Error attempting to move %s to the trash folder, the file does not exist.\n' "${path}" >&2
+    exit 5
+  fi
+done
+
+exec /bin/rm -rf "$@"

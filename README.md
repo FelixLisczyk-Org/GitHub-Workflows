@@ -6,6 +6,7 @@ This repository contains reusable workflows and composite actions for other repo
 
 * Use `if: job.status == 'failure'` instead of `if: failure()` in composite actions to read the global job status.
 * Run bash scripts with a login shell to load `.bash_profile`: `shell: bash -leo pipefail {0}`
+* A login shell also loads the user profile, which redefines `rm` as a wrapper around `trash`. Unlike `rm -rf`, `trash` fails on a path that does not exist, and it fills the runner's Trash with regenerable build artifacts. Use `command rm` in composite actions to bypass the wrapper.
 
 # Debug
 

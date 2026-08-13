@@ -36,39 +36,7 @@ runs:
       shell: bash -leo pipefail {0}
       if: contains(runner.workspace, '/Users/runner/') == false
     - name: (Local) Validate Tuist Cache
-      run: |
-        cache_directory="Tuist/.build"
-        marker="$cache_directory/.package-resolved-hash"
-        if [[ ! -f "Tuist/Package.resolved" ]]; then
-          echo "Tuist/Package.resolved is missing; clearing the local Tuist cache."
-          rm -rf "$cache_directory"
-          if [[ -e "$cache_directory" ]]; then
-            echo "Unable to clear local Tuist cache at $cache_directory" >&2
-            exit 1
-          fi
-          exit 0
-        fi
-        if [[ ! -d "$cache_directory" ]]; then
-          exit 0
-        fi
-
-        package_hash=$(git hash-object Tuist/Package.resolved)
-        if [[ ! -f "$marker" ]] || [[ "$(<"$marker")" != "$package_hash" ]]; then
-          echo "Tuist cache is missing a valid Package.resolved marker; clearing it."
-          rm -rf "$cache_directory"
-          if [[ -e "$cache_directory" ]]; then
-            echo "Unable to clear stale Tuist cache at $cache_directory" >&2
-            exit 1
-          fi
-          exit 0
-        fi
-
-        # A cache is authoritative only after a successful job writes this marker.
-        rm -f "$marker"
-        if [[ -e "$marker" ]]; then
-          echo "Unable to invalidate Tuist cache marker at $marker" >&2
-          exit 1
-        fi
+      run: "${{ github.action_path }}/scripts/validate-tuist-cache.sh"
       shell: bash -leo pipefail {0}
       if: contains(runner.workspace, '/Users/runner/') == false
     - name: (Local) Select Xcode Version

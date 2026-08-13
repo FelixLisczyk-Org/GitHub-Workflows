@@ -38,7 +38,7 @@ runs:
         fi
       shell: bash -leo pipefail {0}
     - name: Prepare Log Directory
-      run: mkdir -p log && [ -e log/TestResults.xcresult ] && rm -rf log/TestResults.xcresult || true
+      run: mkdir -p log && [ -e log/TestResults.xcresult ] && command rm -rf log/TestResults.xcresult || true
       shell: bash -leo pipefail {0}
     - name: Run Unit Tests (iOS)
       id: test-ios
@@ -67,7 +67,7 @@ runs:
       id: retry-ios-1
       continue-on-error: true
       run: |
-        rm -rf log/TestResults.xcresult
+        command rm -rf log/TestResults.xcresult
         if [ -f Tuist.swift ] && ls *.xcworkspace >/dev/null 2>&1; then
           workspace=$(find . -name '*.xcworkspace' -maxdepth 1 | head -n 1)
           xcodebuild -workspace "$workspace" -scheme '${{ inputs.scheme }}' -destination "$IOS_SIMULATOR_DESTINATION" test \
@@ -99,7 +99,7 @@ runs:
       id: retry-ios-2
       continue-on-error: true
       run: |
-        rm -rf log/TestResults.xcresult
+        command rm -rf log/TestResults.xcresult
         if [ -f Tuist.swift ] && ls *.xcworkspace >/dev/null 2>&1; then
           workspace=$(find . -name '*.xcworkspace' -maxdepth 1 | head -n 1)
           xcodebuild -workspace "$workspace" -scheme '${{ inputs.scheme }}' -destination "$IOS_SIMULATOR_DESTINATION" test \
@@ -150,7 +150,7 @@ runs:
       id: retry-macos-1
       continue-on-error: true
       run: |
-        rm -rf log/TestResults.xcresult
+        command rm -rf log/TestResults.xcresult
         if [ -f Tuist.swift ] && ls *.xcworkspace >/dev/null 2>&1; then
           workspace=$(find . -name '*.xcworkspace' -maxdepth 1 | head -n 1)
           xcodebuild -workspace "$workspace" -scheme '${{ inputs.scheme }}' -sdk macosx test -allowProvisioningUpdates \
@@ -182,7 +182,7 @@ runs:
       id: retry-macos-2
       continue-on-error: true
       run: |
-        rm -rf log/TestResults.xcresult
+        command rm -rf log/TestResults.xcresult
         if [ -f Tuist.swift ] && ls *.xcworkspace >/dev/null 2>&1; then
           workspace=$(find . -name '*.xcworkspace' -maxdepth 1 | head -n 1)
           xcodebuild -workspace "$workspace" -scheme '${{ inputs.scheme }}' -sdk macosx test -allowProvisioningUpdates \
