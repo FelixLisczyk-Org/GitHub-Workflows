@@ -24,6 +24,53 @@ runs:
       with:
         fetch-depth: 0 # Required for scripts that access multiple branches, e.g. `increment-build-number.sh`
         ref: ${{ inputs.branch || '' }}
+        # Persistent self-hosted workspaces retain Tuist/.build locally. Cloud runners
+        # keep checkout's normal clean behavior because their workspaces are ephemeral.
+        clean: ${{ contains(runner.workspace, '/Users/runner/') }}
+    - name: (Local) Clean Workspace, Preserving Tuist Cache
+      run: |
+        # checkout's broad clean would remove the local Tuist cache on persistent runners.
+        # Reset tracked files normally, then remove every ignored/untracked path except it.
+        git reset --hard
+        git clean -ffdx -e Tuist/.build
+      shell: bash -leo pipefail {0}
+      if: contains(runner.workspace, '/Users/runner/') == false
+    - name: (Local) Validate Tuist Cache
+      run: |
+        cache_directory="Tuist/.build"
+        marker="$cache_directory/.package-resolved-hash"
+        if [[ ! -f "Tuist/Package.resolved" ]]; then
+          echo "Tuist/Package.resolved is missing; clearing the local Tuist cache."
+          rm -rf "$cache_directory"
+          if [[ -e "$cache_directory" ]]; then
+            echo "Unable to clear local Tuist cache at $cache_directory" >&2
+            exit 1
+          fi
+          exit 0
+        fi
+        if [[ ! -d "$cache_directory" ]]; then
+          exit 0
+        fi
+
+        package_hash=$(git hash-object Tuist/Package.resolved)
+        if [[ ! -f "$marker" ]] || [[ "$(<"$marker")" != "$package_hash" ]]; then
+          echo "Tuist cache is missing a valid Package.resolved marker; clearing it."
+          rm -rf "$cache_directory"
+          if [[ -e "$cache_directory" ]]; then
+            echo "Unable to clear stale Tuist cache at $cache_directory" >&2
+            exit 1
+          fi
+          exit 0
+        fi
+
+        # A cache is authoritative only after a successful job writes this marker.
+        rm -f "$marker"
+        if [[ -e "$marker" ]]; then
+          echo "Unable to invalidate Tuist cache marker at $marker" >&2
+          exit 1
+        fi
+      shell: bash -leo pipefail {0}
+      if: contains(runner.workspace, '/Users/runner/') == false
     - name: (Local) Select Xcode Version
       id: select-xcode
       uses: FelixLisczyk-Org/GitHub-Workflows/xcode-select-version@main
@@ -87,4 +134,4 @@ runs:
         key: ${{ runner.os }}-tuist-${{ hashFiles('Tuist/Package.resolved') }}
         restore-keys: |
           ${{ runner.os }}-tuist-
-      if: hashFiles('Tuist/Package.resolved') != ''
+      if: contains(runner.workspace, '/Users/runner/') && hashFiles('Tuist/Package.resolved') != ''

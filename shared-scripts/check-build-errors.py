@@ -80,9 +80,13 @@ def handle_derived_data_and_tuist_cache_error(err):
         print(f"Clearing global tuist cache at {tuist_cache_path}")
         os.system(f"rm -rf {tuist_cache_path}")
     project_tuist_path = "Tuist/.build"
+    cache_marker_path = os.path.join(project_tuist_path, ".package-resolved-hash")
     if os.path.exists(project_tuist_path):
         print(f"Clearing project tuist cache at {project_tuist_path}")
         os.system(f"rm -rf {project_tuist_path}")
+    if os.path.exists(cache_marker_path):
+        print(f"Clearing project tuist cache marker at {cache_marker_path}")
+        os.system(f"rm -f {cache_marker_path}")
     if os.path.exists("Tuist.swift"):
         print("Regenerating tuist cache")
         os.system("tuist install && tuist cache && tuist generate --no-open")
@@ -139,11 +143,15 @@ def handle_tuist_cache_error(err):
     else:
         print(f"Global tuist cache not found at {tuist_cache_path}")
     project_tuist_path = "Tuist/.build"
+    cache_marker_path = os.path.join(project_tuist_path, ".package-resolved-hash")
     if os.path.exists(project_tuist_path):
         print(f"Clearing project tuist cache at {project_tuist_path}")
         os.system(f"rm -rf {project_tuist_path}")
     else:
         print(f"Project tuist cache not found at {project_tuist_path}")
+    if os.path.exists(cache_marker_path):
+        print(f"Clearing project tuist cache marker at {cache_marker_path}")
+        os.system(f"rm -f {cache_marker_path}")
     print("Regenerating tuist cache")
     os.system("tuist install && tuist cache && tuist generate --no-open")
     set_retry_build()
