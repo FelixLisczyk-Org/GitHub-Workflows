@@ -151,8 +151,16 @@ test_paginated_selection_associations_exclusions_and_success() {
 
   assert_status 0 || return 1
   assert_contains 'Closing PR #7 in example/project; cleaning up associated active workflow runs.' || return 1
-  assert_contains 'Discovered 5 status query/queries, 6 page(s), and 12 active workflow run(s).' || return 1
-  assert_contains 'Selected 2 active workflow run(s) associated with closed PR #7: 200 201' || return 1
+  assert_contains 'Discovered status queued: 2 page(s), 14 workflow run(s).' || return 1
+  assert_contains 'Discovered status in_progress: 1 page(s), 2 workflow run(s).' || return 1
+  assert_contains 'Discovered status requested: 1 page(s), 1 workflow run(s).' || return 1
+  assert_contains 'Discovered status waiting: 1 page(s), 1 workflow run(s).' || return 1
+  assert_contains 'Discovered status pending: 1 page(s), 2 workflow run(s).' || return 1
+  assert_contains 'Discovered 5 status query/queries, 6 page(s), and 20 active workflow run(s).' || return 1
+  assert_contains 'Selected 7 active workflow run(s) associated with closed PR #7: 200 201 202 203 204 205 210' || return 1
+  for selected_id in 200 201 202 203 204 205 210; do
+    assert_exact_call_count 1 "api --method POST --include /repos/example/project/actions/runs/${selected_id}/cancel" || return 1
+  done
   assert_contains 'Cancellation accepted for workflow run 200 (HTTP 202).' || return 1
   assert_contains 'Cancellation accepted for workflow run 201 (HTTP 204).' || return 1
   assert_not_contains 'test-token' || return 1
@@ -165,7 +173,7 @@ test_paginated_selection_associations_exclusions_and_success() {
   assert_exact_call_count 1 'api --method POST --include /repos/example/project/actions/runs/201/cancel' || return 1
 
   local excluded_id
-  for excluded_id in 101 102 104 105 106 107 108 109 9007199254740993; do
+  for excluded_id in 101 102 104 105 106 107 108 109 211 212 9007199254740993; do
     assert_call_count 0 "/actions/runs/${excluded_id}/cancel" || return 1
   done
 }
@@ -210,6 +218,11 @@ test_malformed_context_is_rejected_before_api_calls() {
 test_no_match_and_repeat_are_idempotent() {
   run_script no_match
   assert_status 0 || return 1
+  assert_contains 'Discovered status queued: 1 page(s), 0 workflow run(s).' || return 1
+  assert_contains 'Discovered status in_progress: 1 page(s), 0 workflow run(s).' || return 1
+  assert_contains 'Discovered status requested: 1 page(s), 0 workflow run(s).' || return 1
+  assert_contains 'Discovered status waiting: 1 page(s), 0 workflow run(s).' || return 1
+  assert_contains 'Discovered status pending: 1 page(s), 0 workflow run(s).' || return 1
   assert_contains 'Discovered 5 status query/queries, 5 page(s), and 0 active workflow run(s).' || return 1
   assert_contains 'No active workflow runs associated with closed PR #7 require cancellation.' || return 1
 
@@ -318,10 +331,29 @@ test_malformed_discovery_and_filter_failures_are_fatal() {
   assert_call_count 0 '/cancel' || return 1
 
   rm -f "${TEST_TMP}/calls.log"
-  run_script malformed_filter
+  run_script malformed_id
+  assert_failure || return 1
+  assert_contains "Workflow run discovery for status 'queued' returned an invalid response." || return 1
+  assert_call_count 0 '/cancel' || return 1
+
+  rm -f "${TEST_TMP}/calls.log"
+  run_script malformed_zero
+  assert_failure || return 1
+  assert_contains "Workflow run discovery for status 'queued' returned an invalid response." || return 1
+  assert_call_count 0 '/cancel' || return 1
+
+  rm -f "${TEST_TMP}/calls.log"
+  run_script malformed_response
   assert_failure || return 1
   assert_contains "Workflow run discovery for status 'in_progress' returned an invalid response." || return 1
   assert_not_contains 'No active workflow runs associated with closed PR' || return 1
+  assert_call_count 0 '/cancel' || return 1
+}
+
+test_later_status_discovery_failure_is_fail_closed() {
+  run_script later_failure
+  assert_failure || return 1
+  assert_contains "Workflow run discovery for status 'in_progress' failed after 3 attempt(s) (HTTP 500)." || return 1
   assert_call_count 0 '/cancel' || return 1
 }
 
@@ -351,6 +383,7 @@ main() {
     test_discovery_rate_limit_403_retries_with_safe_delay
     test_auth_and_exhausted_discovery_failures_are_fatal
     test_malformed_discovery_and_filter_failures_are_fatal
+    test_later_status_discovery_failure_is_fail_closed
     test_continues_after_one_cancellation_fails
   )
 

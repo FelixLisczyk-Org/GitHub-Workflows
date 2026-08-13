@@ -11,7 +11,6 @@ API_RATE_LIMIT_RESET=""
 API_RETRY_AFTER=""
 API_STATUS=""
 DISCOVERY_CANDIDATE_FILE=""
-DISCOVERY_COMPLETED_TOTAL=0
 DISCOVERY_PAGE_TOTAL=0
 DISCOVERY_RUN_TOTAL=0
 DISCOVERY_STATUS_TOTAL=0
@@ -202,6 +201,8 @@ discover_runs() {
     for ((attempt = 1; attempt <= MAX_ATTEMPTS; attempt++)); do
       request_api --method GET --paginate --slurp "${endpoint}"
 
+      # gh slurps one status query into memory; buffers are released before the next status,
+      # limiting retention to the active runs for one status rather than repository history.
       if (( API_EXIT == 0 )); then
         if ! jq -e 'type == "array" and all(.[]; type == "object" and (.workflow_runs | type) == "array" and all(.workflow_runs[]; type == "object" and (.id | type) == "number" and .id > 0 and ((.id | floor) == .id) and ((.pull_requests? // []) | type) == "array" and all((.pull_requests? // [])[]; type == "object" and (.number? != null))))' \
           >/dev/null <<< "${API_OUTPUT}"; then

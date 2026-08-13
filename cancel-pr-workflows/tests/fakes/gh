@@ -92,10 +92,19 @@ discovery_json() {
 
   case "${FAKE_GH_SCENARIO}:${status}" in
     selection:queued)
-      printf '%s\n' '[{"workflow_runs":[{"id":101,"event":"pull_request","status":"completed","pull_requests":[{"number":7}]},{"id":102,"event":"pull_request","status":"in_progress","pull_requests":[{"number":8}]},{"id":200,"event":"pull_request","status":"queued","pull_requests":[{"number":8},{"number":7}]},{"id":104,"event":"pull_request","status":"in_progress"},{"id":105,"event":"pull_request","status":"queued","pull_requests":[]},{"id":106,"event":"schedule","status":"in_progress","pull_requests":[]},{"id":107,"event":"release","status":"queued"}]},{"workflow_runs":[{"id":200,"event":"pull_request","status":"queued","pull_requests":[{"number":7}]},{"id":108,"event":"workflow_dispatch","status":"in_progress","pull_requests":[]},{"id":109,"event":"push","status":"queued","pull_requests":[]}]}]'
+      printf '%s\n' '[{"workflow_runs":[{"id":101,"event":"pull_request","status":"completed","pull_requests":[{"number":7}]},{"id":102,"event":"pull_request","status":"in_progress","pull_requests":[{"number":8}]},{"id":200,"event":"pull_request","status":"queued","pull_requests":[{"number":8},{"number":7}]},{"id":104,"event":"pull_request","status":"in_progress"},{"id":105,"event":"pull_request","status":"queued","pull_requests":[]},{"id":106,"event":"schedule","status":"in_progress","pull_requests":[]},{"id":107,"event":"release","status":"queued"},{"id":210,"event":"pull_request_target","status":"queued","pull_requests":[{"number":7}]},{"id":211,"event":"pull_request_target","status":"queued","pull_requests":[{"number":8}]},{"id":212,"event":"pull_request","status":"queued","head_repository":{"fork":true},"pull_requests":[]}]},{"workflow_runs":[{"id":200,"event":"pull_request","status":"queued","pull_requests":[{"number":7}]},{"id":202,"event":"pull_request","status":"queued","pull_requests":[{"number":7}]},{"id":108,"event":"workflow_dispatch","status":"in_progress","pull_requests":[]},{"id":109,"event":"push","status":"queued","pull_requests":[]}]}]'
       ;;
     selection:in_progress)
       printf '%s\n' '[{"workflow_runs":[{"id":201,"event":"pull_request","status":"in_progress","pull_requests":[{"number":7}]},{"id":9007199254740993,"event":"pull_request","status":"queued","pull_requests":[{"number":7}]}]}]'
+      ;;
+    selection:requested)
+      printf '%s\n' '[{"workflow_runs":[{"id":203,"event":"pull_request","status":"requested","pull_requests":[{"number":7}]}]}]'
+      ;;
+    selection:waiting)
+      printf '%s\n' '[{"workflow_runs":[{"id":204,"event":"pull_request_target","status":"waiting","pull_requests":[{"number":7}]}]}]'
+      ;;
+    selection:pending)
+      printf '%s\n' '[{"workflow_runs":[{"id":202,"event":"pull_request","status":"pending","pull_requests":[{"number":7}]},{"id":205,"event":"pull_request","status":"pending","pull_requests":[{"number":7}]}]}]'
       ;;
     repeat:in_progress)
       if [[ -f "${FAKE_GH_STATE_DIR}/repeat.cancelled" ]]; then
@@ -125,11 +134,23 @@ discovery_json() {
     continue:in_progress)
       printf '%s\n' '[{"workflow_runs":[{"id":701,"status":"in_progress","pull_requests":[{"number":7}]},{"id":702,"status":"queued","pull_requests":[{"number":7}]}]}]'
       ;;
-    malformed_filter:in_progress)
+    malformed_response:in_progress)
       printf '%s\n' '[{"workflow_runs":[{"id":801,"status":"in_progress","pull_requests":[7]}]}]'
       ;;
     malformed_discovery:queued)
       printf '%s\n' '[{"workflow_runs":{}}]'
+      ;;
+    malformed_id:queued)
+      printf '%s\n' '[{"workflow_runs":[{"id":"not-a-number","status":"queued","pull_requests":[{"number":7}]}]}]'
+      ;;
+    malformed_zero:queued)
+      printf '%s\n' '[{"workflow_runs":[{"id":0,"status":"queued","pull_requests":[{"number":7}]}]}]'
+      ;;
+    later_failure:queued)
+      printf '%s\n' '[{"workflow_runs":[{"id":901,"status":"queued","pull_requests":[{"number":7}]}]}]'
+      ;;
+    later_failure:in_progress)
+      printf '%s\n' '[{"workflow_runs":[]}]'
       ;;
     *)
       printf '%s\n' '[{"workflow_runs":[]}]'
@@ -163,6 +184,12 @@ if [[ "${endpoint}" =~ /actions/runs\?per_page=100\&status=(queued|in_progress|r
     discovery_failure)
       counter discovery >/dev/null
       respond 500
+      ;;
+    later_failure)
+      if [[ "${status}" == in_progress ]]; then
+        counter discovery >/dev/null
+        respond 500
+      fi
       ;;
   esac
   discovery_json "${status}"
