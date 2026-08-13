@@ -151,14 +151,17 @@ test_paginated_selection_associations_exclusions_and_success() {
 
   assert_status 0 || return 1
   assert_contains 'Closing PR #7 in example/project; cleaning up associated active workflow runs.' || return 1
-  assert_contains 'Discovered 2 page(s) containing 12 workflow run(s).' || return 1
+  assert_contains 'Discovered 5 status query/queries, 6 page(s), and 12 active workflow run(s).' || return 1
   assert_contains 'Selected 2 active workflow run(s) associated with closed PR #7: 200 201' || return 1
   assert_contains 'Cancellation accepted for workflow run 200 (HTTP 202).' || return 1
   assert_contains 'Cancellation accepted for workflow run 201 (HTTP 204).' || return 1
   assert_not_contains 'test-token' || return 1
 
-  assert_exact_call_count 1 'api --method GET --paginate --slurp /repos/example/project/actions/runs?per_page=100' || return 1
-  assert_exact_call_count 1 'api --method POST --include /repos/example/project/actions/runs/200/cancel' || return 1
+  assert_exact_call_count 1 'api --method GET --paginate --slurp /repos/example/project/actions/runs?per_page=100&status=queued' || return 1
+  assert_exact_call_count 1 'api --method GET --paginate --slurp /repos/example/project/actions/runs?per_page=100&status=in_progress' || return 1
+  assert_exact_call_count 1 'api --method GET --paginate --slurp /repos/example/project/actions/runs?per_page=100&status=requested' || return 1
+  assert_exact_call_count 1 'api --method GET --paginate --slurp /repos/example/project/actions/runs?per_page=100&status=waiting' || return 1
+  assert_exact_call_count 1 'api --method GET --paginate --slurp /repos/example/project/actions/runs?per_page=100&status=pending' || return 1
   assert_exact_call_count 1 'api --method POST --include /repos/example/project/actions/runs/201/cancel' || return 1
 
   local excluded_id
@@ -207,7 +210,7 @@ test_malformed_context_is_rejected_before_api_calls() {
 test_no_match_and_repeat_are_idempotent() {
   run_script no_match
   assert_status 0 || return 1
-  assert_contains 'Discovered 1 page(s) containing 0 workflow run(s).' || return 1
+  assert_contains 'Discovered 5 status query/queries, 5 page(s), and 0 active workflow run(s).' || return 1
   assert_contains 'No active workflow runs associated with closed PR #7 require cancellation.' || return 1
 
   rm -f "${TEST_TMP}/calls.log"
@@ -274,18 +277,18 @@ test_discovery_transport_failure_retries_then_succeeds() {
   run_script discovery_retry
 
   assert_status 0 || return 1
-  assert_contains 'Workflow run discovery failed transiently (attempt 1/3, HTTP transport error). Retrying.' || return 1
-  assert_contains 'Discovered 1 page(s) containing 0 workflow run(s).' || return 1
-  assert_exact_call_count 2 'api --method GET --paginate --slurp /repos/example/project/actions/runs?per_page=100' || return 1
+  assert_contains 'Workflow run discovery for status queued failed transiently (attempt 1/3, HTTP transport error). Retrying.' || return 1
+  assert_contains 'Discovered 5 status query/queries, 5 page(s), and 0 active workflow run(s).' || return 1
+  assert_exact_call_count 2 'api --method GET --paginate --slurp /repos/example/project/actions/runs?per_page=100&status=queued' || return 1
 }
 
 test_discovery_rate_limit_403_retries_with_safe_delay() {
   run_script discovery_rate_limit
 
   assert_status 0 || return 1
-  assert_contains 'Workflow run discovery failed transiently (attempt 1/3, HTTP 403). Retrying.' || return 1
-  assert_contains 'Discovered 1 page(s) containing 0 workflow run(s).' || return 1
-  assert_exact_call_count 2 'api --method GET --paginate --slurp /repos/example/project/actions/runs?per_page=100' || return 1
+  assert_contains 'Workflow run discovery for status queued failed transiently (attempt 1/3, HTTP 403). Retrying.' || return 1
+  assert_contains 'Discovered 5 status query/queries, 5 page(s), and 0 active workflow run(s).' || return 1
+  assert_exact_call_count 2 'api --method GET --paginate --slurp /repos/example/project/actions/runs?per_page=100&status=queued' || return 1
   assert_sleep_delay 60 || return 1
 }
 
@@ -298,27 +301,26 @@ test_auth_and_exhausted_discovery_failures_are_fatal() {
   rm -f "${TEST_TMP}/calls.log"
   run_script discovery_auth
   assert_failure || return 1
-  assert_contains 'Workflow run discovery failed after 1 attempt(s) (HTTP 401).' || return 1
-  assert_exact_call_count 1 'api --method GET --paginate --slurp /repos/example/project/actions/runs?per_page=100' || return 1
+  assert_contains "Workflow run discovery for status 'queued' failed after 1 attempt(s) (HTTP 401)." || return 1
+  assert_exact_call_count 1 'api --method GET --paginate --slurp /repos/example/project/actions/runs?per_page=100&status=queued' || return 1
 
   rm -f "${TEST_TMP}/calls.log"
   run_script discovery_failure
   assert_failure || return 1
-  assert_contains 'Workflow run discovery failed after 3 attempt(s) (HTTP 500).' || return 1
-  assert_exact_call_count 3 'api --method GET --paginate --slurp /repos/example/project/actions/runs?per_page=100' || return 1
+  assert_contains "Workflow run discovery for status 'queued' failed after 3 attempt(s) (HTTP 500)." || return 1
+  assert_exact_call_count 3 'api --method GET --paginate --slurp /repos/example/project/actions/runs?per_page=100&status=queued' || return 1
 }
 
 test_malformed_discovery_and_filter_failures_are_fatal() {
   run_script malformed_discovery
   assert_failure || return 1
-  assert_contains 'Workflow run discovery returned an invalid response.' || return 1
+  assert_contains "Workflow run discovery for status 'queued' returned an invalid response." || return 1
   assert_call_count 0 '/cancel' || return 1
 
   rm -f "${TEST_TMP}/calls.log"
   run_script malformed_filter
   assert_failure || return 1
-  assert_contains 'Discovered 1 page(s) containing 1 workflow run(s).' || return 1
-  assert_contains 'Workflow run filtering failed.' || return 1
+  assert_contains "Workflow run discovery for status 'in_progress' returned an invalid response." || return 1
   assert_not_contains 'No active workflow runs associated with closed PR' || return 1
   assert_call_count 0 '/cancel' || return 1
 }

@@ -10,10 +10,22 @@ API_RATE_LIMIT_REMAINING=""
 API_RATE_LIMIT_RESET=""
 API_RETRY_AFTER=""
 API_STATUS=""
-DISCOVERY_JSON=""
-DISCOVERY_PAGE_TOTAL=""
-DISCOVERY_RUN_TOTAL=""
+DISCOVERY_CANDIDATE_FILE=""
+DISCOVERY_COMPLETED_TOTAL=0
+DISCOVERY_PAGE_TOTAL=0
+DISCOVERY_RUN_TOTAL=0
+DISCOVERY_STATUS_TOTAL=0
 RUN_IDS=()
+
+readonly ACTIVE_STATUSES=(queued in_progress requested waiting pending)
+
+cleanup() {
+  if [[ -n "${DISCOVERY_CANDIDATE_FILE}" ]]; then
+    rm -f "${DISCOVERY_CANDIDATE_FILE}"
+  fi
+}
+
+trap cleanup EXIT
 
 log_error() {
   printf '::error::%s\n' "$*" >&2
@@ -172,36 +184,80 @@ sleep_before_retry() {
 
 discover_runs() {
   local attempt
-  local endpoint="/repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100"
+  local endpoint
+  local completed_count
+  local page_count
+  local run_count
+  local status
 
-  for ((attempt = 1; attempt <= MAX_ATTEMPTS; attempt++)); do
-    request_api --method GET --paginate --slurp "${endpoint}"
+  DISCOVERY_CANDIDATE_FILE=$(mktemp)
+  : >"${DISCOVERY_CANDIDATE_FILE}"
+  DISCOVERY_PAGE_TOTAL=0
+  DISCOVERY_RUN_TOTAL=0
+  DISCOVERY_STATUS_TOTAL=0
 
-    if (( API_EXIT == 0 )); then
-      DISCOVERY_JSON=${API_OUTPUT}
-      if ! jq -e 'type == "array" and all(.[]; type == "object" and (.workflow_runs | type) == "array")' \
-        >/dev/null <<< "${DISCOVERY_JSON}"; then
-        log_error "Workflow run discovery returned an invalid response."
-        return 1
+  for status in "${ACTIVE_STATUSES[@]}"; do
+    endpoint="/repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100&status=${status}"
+
+    for ((attempt = 1; attempt <= MAX_ATTEMPTS; attempt++)); do
+      request_api --method GET --paginate --slurp "${endpoint}"
+
+      if (( API_EXIT == 0 )); then
+        if ! jq -e 'type == "array" and all(.[]; type == "object" and (.workflow_runs | type) == "array" and all(.workflow_runs[]; type == "object" and (.id | type) == "number" and .id > 0 and ((.id | floor) == .id) and ((.pull_requests? // []) | type) == "array" and all((.pull_requests? // [])[]; type == "object" and (.number? != null))))' \
+          >/dev/null <<< "${API_OUTPUT}"; then
+          log_error "Workflow run discovery for status '${status}' returned an invalid response."
+          return 1
+        fi
+
+        if ! page_count=$(jq -er 'length' <<< "${API_OUTPUT}") \
+          || ! run_count=$(jq -er '[.[].workflow_runs[]] | length' <<< "${API_OUTPUT}") \
+          || ! completed_count=$(jq -er '[.[].workflow_runs[] | select(.status == "completed")] | length' <<< "${API_OUTPUT}"); then
+          log_error "Could not calculate workflow run discovery totals for status '${status}'."
+          return 1
+        fi
+
+        if ! jq -r \
+          --arg current_run_id "${GITHUB_RUN_ID}" \
+          --arg pr_number "${PR_NUMBER}" \
+          '.[] | .workflow_runs[]
+            | select(any(.pull_requests[]?; (.number | tostring) == $pr_number))
+            | select(.status != "completed")
+            | select((.id | tostring) != $current_run_id)
+            | (.id | tostring)' \
+          <<< "${API_OUTPUT}" >>"${DISCOVERY_CANDIDATE_FILE}"; then
+          log_error "Workflow run filtering failed for status '${status}'."
+          return 1
+        fi
+
+        DISCOVERY_STATUS_TOTAL=$((DISCOVERY_STATUS_TOTAL + 1))
+        DISCOVERY_PAGE_TOTAL=$((DISCOVERY_PAGE_TOTAL + page_count))
+        DISCOVERY_RUN_TOTAL=$((DISCOVERY_RUN_TOTAL + run_count))
+        if (( completed_count > 0 )); then
+          printf 'Ignored %s completed workflow run(s) returned for active status %s.\n' \
+            "${completed_count}" "${status}" >&2
+        fi
+        printf 'Discovered status %s: %s page(s), %s workflow run(s).\n' \
+          "${status}" "${page_count}" "${run_count}"
+        break
       fi
-      if ! DISCOVERY_PAGE_TOTAL=$(jq -er 'length' <<< "${DISCOVERY_JSON}") \
-        || ! DISCOVERY_RUN_TOTAL=$(jq -er '[.[].workflow_runs[]] | length' <<< "${DISCOVERY_JSON}"); then
-        log_error "Could not calculate workflow run discovery totals."
-        return 1
+
+      if is_transient_failure && (( attempt < MAX_ATTEMPTS )); then
+        printf 'Workflow run discovery for status %s failed transiently (attempt %d/%d, HTTP %s). Retrying.\n' \
+          "${status}" "${attempt}" "${MAX_ATTEMPTS}" "${API_STATUS:-transport error}" >&2
+        sleep_before_retry "${attempt}"
+        continue
       fi
-      return 0
-    fi
 
-    if is_transient_failure && (( attempt < MAX_ATTEMPTS )); then
-      printf 'Workflow run discovery failed transiently (attempt %d/%d, HTTP %s). Retrying.\n' \
-        "${attempt}" "${MAX_ATTEMPTS}" "${API_STATUS:-transport error}" >&2
-      sleep_before_retry "${attempt}"
-      continue
-    fi
+      log_error "Workflow run discovery for status '${status}' failed after ${attempt} attempt(s) (HTTP ${API_STATUS:-transport error})."
+      return 1
+    done
 
-    log_error "Workflow run discovery failed after ${attempt} attempt(s) (HTTP ${API_STATUS:-transport error})."
-    return 1
+    API_OUTPUT=""
+    API_BODY=""
   done
+
+  printf 'Discovered %s status query/queries, %s page(s), and %s active workflow run(s).\n' \
+    "${DISCOVERY_STATUS_TOTAL}" "${DISCOVERY_PAGE_TOTAL}" "${DISCOVERY_RUN_TOTAL}"
 }
 
 select_run_ids() {
@@ -209,20 +265,7 @@ select_run_ids() {
   local selection_file
 
   selection_file=$(mktemp)
-  if ! jq -r \
-    --arg current_run_id "${GITHUB_RUN_ID}" \
-    --arg pr_number "${PR_NUMBER}" \
-    '
-      [.[].workflow_runs[]]
-      | [
-          .[]
-          | select(any(.pull_requests[]?; (.number | tostring) == $pr_number))
-          | select(.status != "completed")
-          | select((.id | tostring) != $current_run_id)
-          | (.id | tostring)
-        ]
-      | unique[]
-    ' <<< "${DISCOVERY_JSON}" >"${selection_file}"; then
+  if ! sort -n -u "${DISCOVERY_CANDIDATE_FILE}" >"${selection_file}"; then
     rm -f "${selection_file}"
     log_error "Workflow run filtering failed."
     return 1
@@ -232,6 +275,9 @@ select_run_ids() {
   rm -f "${selection_file}"
 
   for run_id in "${RUN_IDS[@]}"; do
+    if [[ "${run_id}" == "" ]]; then
+      continue
+    fi
     if [[ ! "${run_id}" =~ ^[1-9][0-9]*$ ]]; then
       log_error "Workflow run discovery returned an invalid run ID."
       return 1
@@ -338,9 +384,9 @@ main() {
   printf 'Closing PR #%s in %s; cleaning up associated active workflow runs.\n' \
     "${PR_NUMBER}" "${GITHUB_REPOSITORY}"
   discover_runs
-  printf 'Discovered %s page(s) containing %s workflow run(s).\n' \
-    "${DISCOVERY_PAGE_TOTAL}" "${DISCOVERY_RUN_TOTAL}"
   select_run_ids
+  rm -f "${DISCOVERY_CANDIDATE_FILE}"
+  DISCOVERY_CANDIDATE_FILE=""
 
   if (( ${#RUN_IDS[@]} == 0 )); then
     printf 'No active workflow runs associated with closed PR #%s require cancellation.\n' "${PR_NUMBER}"

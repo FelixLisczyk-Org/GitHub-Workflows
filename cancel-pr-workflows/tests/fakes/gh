@@ -88,42 +88,47 @@ respond() {
 }
 
 discovery_json() {
-  case "${FAKE_GH_SCENARIO}" in
-    selection)
-      printf '%s\n' '[{"workflow_runs":[{"id":101,"event":"pull_request","status":"completed","pull_requests":[{"number":7}]},{"id":102,"event":"pull_request","status":"in_progress","pull_requests":[{"number":8}]},{"id":9007199254740993,"event":"pull_request","status":"queued","pull_requests":[{"number":7}]},{"id":200,"event":"pull_request","status":"queued","pull_requests":[{"number":8},{"number":7}]},{"id":104,"event":"pull_request","status":"in_progress"},{"id":105,"event":"pull_request","status":"queued","pull_requests":[]},{"id":106,"event":"schedule","status":"in_progress","pull_requests":[]},{"id":107,"event":"release","status":"queued"}]},{"workflow_runs":[{"id":200,"event":"pull_request","status":"queued","pull_requests":[{"number":7}]},{"id":201,"event":"pull_request","status":"in_progress","pull_requests":[{"number":7}]},{"id":108,"event":"workflow_dispatch","status":"in_progress","pull_requests":[]},{"id":109,"event":"push","status":"queued"}]}]'
+  local status=$1
+
+  case "${FAKE_GH_SCENARIO}:${status}" in
+    selection:queued)
+      printf '%s\n' '[{"workflow_runs":[{"id":101,"event":"pull_request","status":"completed","pull_requests":[{"number":7}]},{"id":102,"event":"pull_request","status":"in_progress","pull_requests":[{"number":8}]},{"id":200,"event":"pull_request","status":"queued","pull_requests":[{"number":8},{"number":7}]},{"id":104,"event":"pull_request","status":"in_progress"},{"id":105,"event":"pull_request","status":"queued","pull_requests":[]},{"id":106,"event":"schedule","status":"in_progress","pull_requests":[]},{"id":107,"event":"release","status":"queued"}]},{"workflow_runs":[{"id":200,"event":"pull_request","status":"queued","pull_requests":[{"number":7}]},{"id":108,"event":"workflow_dispatch","status":"in_progress","pull_requests":[]},{"id":109,"event":"push","status":"queued","pull_requests":[]}]}]'
       ;;
-    repeat)
+    selection:in_progress)
+      printf '%s\n' '[{"workflow_runs":[{"id":201,"event":"pull_request","status":"in_progress","pull_requests":[{"number":7}]},{"id":9007199254740993,"event":"pull_request","status":"queued","pull_requests":[{"number":7}]}]}]'
+      ;;
+    repeat:in_progress)
       if [[ -f "${FAKE_GH_STATE_DIR}/repeat.cancelled" ]]; then
         printf '%s\n' '[{"workflow_runs":[{"id":301,"status":"completed","pull_requests":[{"number":7}]}]}]'
       else
         printf '%s\n' '[{"workflow_runs":[{"id":301,"status":"in_progress","pull_requests":[{"number":7}]}]}]'
       fi
       ;;
-    race)
-      printf '%s\n' '[{"workflow_runs":[{"id":401,"status":"in_progress","pull_requests":[{"number":7}]},{"id":402,"status":"queued","pull_requests":[{"number":7}]},{"id":403,"status":"in_progress","pull_requests":[{"number":7}]}]}]'
+    race:queued)
+      printf '%s\n' '[{"workflow_runs":[{"id":402,"status":"queued","pull_requests":[{"number":7}]}]}]'
       ;;
-    cancel_retry)
+    race:in_progress)
+      printf '%s\n' '[{"workflow_runs":[{"id":401,"status":"in_progress","pull_requests":[{"number":7}]},{"id":403,"status":"in_progress","pull_requests":[{"number":7}]}]}]'
+      ;;
+    cancel_retry:in_progress)
       printf '%s\n' '[{"workflow_runs":[{"id":501,"status":"in_progress","pull_requests":[{"number":7}]}]}]'
       ;;
-    rate_limit_403)
+    rate_limit_403:in_progress)
       printf '%s\n' '[{"workflow_runs":[{"id":551,"status":"in_progress","pull_requests":[{"number":7}]}]}]'
       ;;
-    rate_limit_reset)
+    rate_limit_reset:in_progress)
       printf '%s\n' '[{"workflow_runs":[{"id":552,"status":"in_progress","pull_requests":[{"number":7}]}]}]'
       ;;
-    discovery_retry | discovery_rate_limit | discovery_auth | discovery_failure | no_match)
-      printf '%s\n' '[{"workflow_runs":[]}]'
-      ;;
-    auth_cancel)
+    auth_cancel:in_progress)
       printf '%s\n' '[{"workflow_runs":[{"id":601,"status":"in_progress","pull_requests":[{"number":7}]}]}]'
       ;;
-    continue)
+    continue:in_progress)
       printf '%s\n' '[{"workflow_runs":[{"id":701,"status":"in_progress","pull_requests":[{"number":7}]},{"id":702,"status":"queued","pull_requests":[{"number":7}]}]}]'
       ;;
-    malformed_filter)
+    malformed_filter:in_progress)
       printf '%s\n' '[{"workflow_runs":[{"id":801,"status":"in_progress","pull_requests":[7]}]}]'
       ;;
-    malformed_discovery)
+    malformed_discovery:queued)
       printf '%s\n' '[{"workflow_runs":{}}]'
       ;;
     *)
@@ -132,7 +137,8 @@ discovery_json() {
   esac
 }
 
-if [[ "${endpoint}" == *'/actions/runs?per_page=100' ]]; then
+if [[ "${endpoint}" =~ /actions/runs\?per_page=100\&status=(queued|in_progress|requested|waiting|pending)$ ]]; then
+  status=${BASH_REMATCH[1]}
   if [[ "${method}" != GET || "${paginate}" != true || "${slurp}" != true ]]; then
     printf 'discovery must use GET, --paginate, and --slurp\n' >&2
     exit 2
@@ -140,13 +146,13 @@ if [[ "${endpoint}" == *'/actions/runs?per_page=100' ]]; then
 
   case "${FAKE_GH_SCENARIO}" in
     discovery_retry)
-      if (( $(counter discovery) == 1 )); then
+      if [[ "${status}" == queued ]] && (( $(counter discovery) == 1 )); then
         printf 'gh: simulated transport failure\n' >&2
         exit 1
       fi
       ;;
     discovery_rate_limit)
-      if (( $(counter discovery) == 1 )); then
+      if [[ "${status}" == queued ]] && (( $(counter discovery) == 1 )); then
         printf 'gh: API rate limit exceeded for fake user (HTTP 403)\n' >&2
         exit 1
       fi
@@ -159,8 +165,13 @@ if [[ "${endpoint}" == *'/actions/runs?per_page=100' ]]; then
       respond 500
       ;;
   esac
-  discovery_json
+  discovery_json "${status}"
   exit 0
+fi
+
+if [[ "${endpoint}" == *'/actions/runs?per_page=100' ]]; then
+  printf 'discovery must include an active status filter\n' >&2
+  exit 2
 fi
 
 run_id=""
