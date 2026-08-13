@@ -14,7 +14,10 @@ DISCOVERY_CANDIDATE_FILE=""
 DISCOVERY_PAGE_TOTAL=0
 DISCOVERY_RUN_TOTAL=0
 DISCOVERY_STATUS_TOTAL=0
+PR_HEAD_REF_MATCH=""
+PR_HEAD_REPO_MATCH=""
 RUN_IDS=()
+SELF_WORKFLOW_PATH=""
 
 readonly ACTIVE_STATUSES=(queued in_progress requested waiting pending)
 
@@ -28,6 +31,10 @@ trap cleanup EXIT
 
 log_error() {
   printf '::error::%s\n' "$*" >&2
+}
+
+log_warning() {
+  printf '::warning::%s\n' "$*" >&2
 }
 
 validate_context() {
@@ -49,6 +56,58 @@ validate_context() {
   if [[ -z "${GH_TOKEN:-}" ]]; then
     log_error "GH_TOKEN is required."
     return 1
+  fi
+
+  # A blank head ref or head repository is tolerated (the head repository is null once a
+  # deleted fork is garbage collected); a malformed one is not, because head-ref matching
+  # decides which runs get cancelled.
+  if [[ -n "${PR_HEAD_REF:-}" && "${PR_HEAD_REF}" =~ [[:space:][:cntrl:]] ]]; then
+    log_error "PR_HEAD_REF must not contain whitespace or control characters."
+    return 1
+  fi
+
+  if [[ -n "${PR_HEAD_REPO:-}" && ! "${PR_HEAD_REPO}" =~ ^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+$ ]]; then
+    log_error "PR_HEAD_REPO must use the owner/repo format."
+    return 1
+  fi
+}
+
+# GitHub only lists a workflow run's `pull_requests` associations while the pull request is
+# open. This action runs on `pull_request_target: closed`, so by the time it executes the
+# association has already been dropped from every run belonging to the closing PR, and PR
+# number matching alone finds nothing. Matching the head ref recovers those runs; pairing it
+# with the head repository keeps a same-named branch in a fork from matching.
+resolve_matching_criteria() {
+  local workflow_path
+
+  if [[ -n "${PR_HEAD_REF:-}" && -n "${PR_HEAD_REPO:-}" ]]; then
+    PR_HEAD_REF_MATCH=${PR_HEAD_REF}
+    PR_HEAD_REPO_MATCH=${PR_HEAD_REPO}
+  else
+    PR_HEAD_REF_MATCH=""
+    PR_HEAD_REPO_MATCH=""
+    log_warning "Head ref metadata is unavailable; matching by PR number only, which misses runs whose pull request association was dropped when PR #${PR_NUMBER} closed."
+  fi
+
+  # Exclude sibling runs of this same cleanup workflow: they share the closing PR's head ref,
+  # so concurrent cleanup runs would otherwise cancel each other.
+  if [[ -n "${WORKFLOW_REF:-}" ]]; then
+    workflow_path=${WORKFLOW_REF%%@*}
+    workflow_path=${workflow_path#"${GITHUB_REPOSITORY}/"}
+    if [[ "${workflow_path}" == .github/workflows/* ]]; then
+      SELF_WORKFLOW_PATH=${workflow_path}
+    fi
+  fi
+
+  if [[ -n "${PR_HEAD_REF_MATCH}" ]]; then
+    printf 'Matching active runs by PR number %s and by head ref %s from %s.\n' \
+      "${PR_NUMBER}" "${PR_HEAD_REF_MATCH}" "${PR_HEAD_REPO_MATCH}"
+  else
+    printf 'Matching active runs by PR number %s only.\n' "${PR_NUMBER}"
+  fi
+
+  if [[ -n "${SELF_WORKFLOW_PATH}" ]]; then
+    printf 'Excluding other runs of this cleanup workflow (%s).\n' "${SELF_WORKFLOW_PATH}"
   fi
 }
 
@@ -204,7 +263,7 @@ discover_runs() {
       # gh slurps one status query into memory; buffers are released before the next status,
       # limiting retention to the active runs for one status rather than repository history.
       if (( API_EXIT == 0 )); then
-        if ! jq -e 'type == "array" and all(.[]; type == "object" and (.workflow_runs | type) == "array" and all(.workflow_runs[]; type == "object" and (.id | type) == "number" and .id > 0 and ((.id | floor) == .id) and ((.pull_requests? // []) | type) == "array" and all((.pull_requests? // [])[]; type == "object" and (.number? != null))))' \
+        if ! jq -e 'type == "array" and all(.[]; type == "object" and (.workflow_runs | type) == "array" and all(.workflow_runs[]; type == "object" and (.id | type) == "number" and .id > 0 and ((.id | floor) == .id) and ((.pull_requests? // []) | type) == "array" and all((.pull_requests? // [])[]; type == "object" and (.number? != null)) and ((.head_branch? // "") | type) == "string" and (((.head_repository? // {}) | .full_name? // "") | type) == "string" and ((.path? // "") | type) == "string"))' \
           >/dev/null <<< "${API_OUTPUT}"; then
           log_error "Workflow run discovery for status '${status}' returned an invalid response."
           return 1
@@ -219,9 +278,22 @@ discover_runs() {
 
         if ! jq -r \
           --arg current_run_id "${GITHUB_RUN_ID}" \
+          --arg head_ref "${PR_HEAD_REF_MATCH}" \
+          --arg head_repo "${PR_HEAD_REPO_MATCH}" \
           --arg pr_number "${PR_NUMBER}" \
+          --arg self_workflow_path "${SELF_WORKFLOW_PATH}" \
           '.[] | .workflow_runs[]
-            | select(any(.pull_requests[]?; (.number | tostring) == $pr_number))
+            | select(
+                any(.pull_requests[]?; (.number | tostring) == $pr_number)
+                or (
+                  $head_ref != ""
+                  and $head_repo != ""
+                  and (.head_branch? // "") == $head_ref
+                  and ((((.head_repository? // {}) | .full_name? // "") | ascii_downcase)
+                        == ($head_repo | ascii_downcase))
+                )
+              )
+            | select($self_workflow_path == "" or (.path? // "") != $self_workflow_path)
             | select(.status != "completed")
             | select((.id | tostring) != $current_run_id)
             | (.id | tostring)' \
@@ -384,6 +456,7 @@ main() {
   validate_context
   printf 'Closing PR #%s in %s; cleaning up associated active workflow runs.\n' \
     "${PR_NUMBER}" "${GITHUB_REPOSITORY}"
+  resolve_matching_criteria
   discover_runs
   select_run_ids
   rm -f "${DISCOVERY_CANDIDATE_FILE}"

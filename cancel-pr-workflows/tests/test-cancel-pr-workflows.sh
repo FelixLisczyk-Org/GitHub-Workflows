@@ -24,12 +24,18 @@ run_script() {
   local repository=${3-example/project}
   local run_id=${4-103}
   local token=${5-test-token}
+  local head_ref=${6-feature-branch}
+  local head_repo=${7-example/project}
+  local workflow_ref=${8-example/project/.github/workflows/cancel_closed_pr_workflows.yml@refs/pull/7/merge}
 
   RUN_OUTPUT=$(
     GH_TOKEN="${token}" \
     GITHUB_REPOSITORY="${repository}" \
     GITHUB_RUN_ID="${run_id}" \
+    PR_HEAD_REF="${head_ref}" \
+    PR_HEAD_REPO="${head_repo}" \
     PR_NUMBER="${pr_number}" \
+    WORKFLOW_REF="${workflow_ref}" \
     FAKE_GH_SCENARIO="${scenario}" \
     FAKE_GH_STATE_DIR="${TEST_TMP}" \
     PATH="${FAKE_BIN}:${PATH}" \
@@ -213,6 +219,88 @@ test_malformed_context_is_rejected_before_api_calls() {
   assert_failure || return 1
   assert_contains 'GH_TOKEN is required.' || return 1
   assert_no_api_calls || return 1
+
+  local head_ref
+  local -a invalid_head_refs=(
+    'feature branch'
+    $'feature\tbranch'
+    $'feature\nbranch'
+  )
+
+  for head_ref in "${invalid_head_refs[@]}"; do
+    rm -f "${TEST_TMP}/calls.log"
+    run_script no_match 7 example/project 103 test-token "${head_ref}"
+    assert_failure || return 1
+    assert_contains 'PR_HEAD_REF must not contain whitespace or control characters.' || return 1
+    assert_no_api_calls || return 1
+  done
+
+  local head_repo
+  local -a invalid_head_repos=(
+    'not-a-repository'
+    'example/project/extra'
+    '/project'
+  )
+
+  for head_repo in "${invalid_head_repos[@]}"; do
+    rm -f "${TEST_TMP}/calls.log"
+    run_script no_match 7 example/project 103 test-token feature-branch "${head_repo}"
+    assert_failure || return 1
+    assert_contains 'PR_HEAD_REPO must use the owner/repo format.' || return 1
+    assert_no_api_calls || return 1
+  done
+}
+
+# Reproduces the production shape: the PR is already closed, so GitHub reports no
+# pull request association on any of its runs and only the head ref identifies them.
+test_closed_pr_without_associations_matches_by_head_ref() {
+  run_script closed_pr
+
+  assert_status 0 || return 1
+  assert_contains 'Matching active runs by PR number 7 and by head ref feature-branch from example/project.' || return 1
+  assert_contains 'Excluding other runs of this cleanup workflow (.github/workflows/cancel_closed_pr_workflows.yml).' || return 1
+  assert_contains 'Discovered status queued: 1 page(s), 9 workflow run(s).' || return 1
+  assert_contains 'Discovered status in_progress: 1 page(s), 2 workflow run(s).' || return 1
+  assert_contains 'Discovered 5 status query/queries, 5 page(s), and 11 active workflow run(s).' || return 1
+  assert_contains 'Ignored 1 completed workflow run(s) returned for active status queued.' || return 1
+  assert_contains 'Selected 4 active workflow run(s) associated with closed PR #7: 1001 1007 1008 1009' || return 1
+
+  local selected_id
+  for selected_id in 1001 1007 1008 1009; do
+    assert_exact_call_count 1 "api --method POST --include /repos/example/project/actions/runs/${selected_id}/cancel" || return 1
+  done
+
+  # 1002 forked branch of the same name, 1003 unrelated branch, 1004 already completed,
+  # 1005 a sibling run of this cleanup workflow, 1006 differing branch case,
+  # 1010 head repository no longer resolvable, 103 this run.
+  local excluded_id
+  for excluded_id in 1002 1003 1004 1005 1006 1010 103; do
+    assert_call_count 0 "/actions/runs/${excluded_id}/cancel" || return 1
+  done
+}
+
+test_missing_head_metadata_falls_back_to_pr_number_matching() {
+  run_script closed_pr 7 example/project 103 test-token '' ''
+
+  assert_status 0 || return 1
+  assert_contains 'Head ref metadata is unavailable; matching by PR number only' || return 1
+  assert_contains 'Matching active runs by PR number 7 only.' || return 1
+  assert_contains 'Selected 1 active workflow run(s) associated with closed PR #7: 1009' || return 1
+  assert_exact_call_count 1 'api --method POST --include /repos/example/project/actions/runs/1009/cancel' || return 1
+
+  local excluded_id
+  for excluded_id in 1001 1007 1008; do
+    assert_call_count 0 "/actions/runs/${excluded_id}/cancel" || return 1
+  done
+}
+
+test_sibling_cleanup_runs_are_cancelled_without_a_workflow_ref() {
+  run_script closed_pr 7 example/project 103 test-token feature-branch example/project ''
+
+  assert_status 0 || return 1
+  assert_not_contains 'Excluding other runs of this cleanup workflow' || return 1
+  assert_contains 'Selected 5 active workflow run(s) associated with closed PR #7: 1001 1005 1007 1008 1009' || return 1
+  assert_exact_call_count 1 'api --method POST --include /repos/example/project/actions/runs/1005/cancel' || return 1
 }
 
 test_no_match_and_repeat_are_idempotent() {
@@ -374,6 +462,9 @@ main() {
   local -a tests=(
     test_paginated_selection_associations_exclusions_and_success
     test_malformed_context_is_rejected_before_api_calls
+    test_closed_pr_without_associations_matches_by_head_ref
+    test_missing_head_metadata_falls_back_to_pr_number_matching
+    test_sibling_cleanup_runs_are_cancelled_without_a_workflow_ref
     test_no_match_and_repeat_are_idempotent
     test_409_and_404_cancellation_races_recheck_state
     test_429_and_server_failures_retry_then_succeed
