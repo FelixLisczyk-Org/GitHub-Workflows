@@ -28,6 +28,11 @@ runs:
       run: echo "RETRY_BUILD=false" >> "$GITHUB_ENV"
       shell: bash -leo pipefail {0}
       if: ${{ !cancelled() }}
+    # Each invocation is preceded by a scope marker so the analysis steps below read only
+    # the logs it writes. Every platform step in the job shares one `log` directory.
+    - name: Scope Build Logs
+      run: "${{ github.action_path }}/../shared-scripts/scope-build-logs.sh"
+      shell: bash -leo pipefail {0}
     - name: Run Unit Tests
       id: build-app
       continue-on-error: true
@@ -42,6 +47,10 @@ runs:
       run: python3 ${{ github.action_path }}/../shared-scripts/check-build-errors.py
       shell: bash -leo pipefail {0}
       if: ${{ steps.build-app.outcome == 'failure' }}
+    - name: Scope Build Logs (Infrastructure Retry 1)
+      run: "${{ github.action_path }}/../shared-scripts/scope-build-logs.sh"
+      shell: bash -leo pipefail {0}
+      if: ${{ steps.build-app.outcome == 'failure' && env.RETRY_BUILD == 'true' }}
     - name: Run Unit Tests (Infrastructure Retry 1)
       id: retry-tests-1
       continue-on-error: true
@@ -65,6 +74,10 @@ runs:
       run: python3 ${{ github.action_path }}/../shared-scripts/check-build-errors.py
       shell: bash -leo pipefail {0}
       if: ${{ steps.retry-tests-1.outcome == 'failure' }}
+    - name: Scope Build Logs (Infrastructure Retry 2)
+      run: "${{ github.action_path }}/../shared-scripts/scope-build-logs.sh"
+      shell: bash -leo pipefail {0}
+      if: ${{ steps.retry-tests-1.outcome == 'failure' && env.RETRY_BUILD == 'true' }}
     - name: Run Unit Tests (Infrastructure Retry 2)
       id: retry-tests-2
       continue-on-error: true

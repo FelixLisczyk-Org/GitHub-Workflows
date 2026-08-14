@@ -2,12 +2,21 @@
 This script checks the Xcode build logs for internal errors (like build system crashes)
 and writes the result into the GitHub Actions workflow environment file.
 This allows CI builds to determine if a build should be retried.
+
+Only the logs written by the current invocation are analysed (see `log_scope`), and a
+retry is only offered when nothing in the results looks like a genuine test failure -
+those never heal on a rerun, so recovering from one just multiplies the wall-clock cost
+of a red build.
 """
 
 import json
 import os
+import re
 import subprocess
 import sys
+
+from log_scope import LOG_DIR, scoped_log_entries
+from xcresult_failures import format_test_identifier, get_test_failures
 
 clear_derived_data_errors = [
     "Underlying Error: Test crashed with signal abrt before starting test execution.",
@@ -17,9 +26,21 @@ clear_derived_data_errors = [
     "tapi error: missing required architecture",  # Stale TBD file in EagerLinkingTBDs missing architecture slice
 ]
 
+# A compiler or linker diagnostic naming a build input that is missing from DerivedData,
+# e.g. `ld: ... no such file or directory: '<DerivedData>/.../cmark_gfm.framework/cmark_gfm'`
+# or `clang: error: no such file or directory: 'Foo.swift'`. Such a diagnostic always names
+# the missing path after a colon, which is what separates it from the benign OS chatter
+# xctest writes into the same build log:
+#   [cloudthumbnails.client] getattrlist() failed for file:///... - No such file or directory
+#   [logging-persist] os_unix.c:51044: (2) open(/private/var/db/DetachedSignatures) - No such file or directory
+#   fopen failed for data file: errno = 2 (No such file or directory)
+# Matching those as a bare substring made a passing platform's log trigger a 17-minute
+# Tuist cache rebuild and a full lane rerun on an unrelated platform.
+missing_build_input_error = re.compile(r"no such file or directory:\s*\S", re.IGNORECASE)
+
 clear_derived_data_and_tuist_cache_errors = [
     "ld: symbol(s) not found",
-    "no such file or directory",  # Missing file in DerivedData after dependency update; often caused by stale Tuist cache
+    missing_build_input_error,  # Missing file in DerivedData after dependency update; often caused by stale Tuist cache
     "Undefined symbol: type metadata accessor",
     # Stale DerivedData/Tuist cache breaks an SPM package's generated module map (e.g. cmark-gfm),
     # interrupting the test action before it starts. Matched both with and without the shell-style
@@ -163,42 +184,80 @@ def handle_regular_error(err):
     set_retry_build()
 
 
-def process_errors(error_messages):
-    """Process error messages and handle the single highest-priority match.
+# Ordered highest-priority first; the first category to match wins.
+handlers = [
+    # Linker errors that require clearing both derived data and tuist cache
+    (clear_derived_data_and_tuist_cache_errors, handle_derived_data_and_tuist_cache_error),
+    # Errors that require clearing derived data
+    (clear_derived_data_errors, handle_derived_data_error),
+    # Errors that require recreating simulators from scratch
+    (recreate_simulators_errors, handle_recreate_simulators_error),
+    # Errors that require a simulator reset
+    (simulator_errors, handle_simulator_error),
+    # Errors that require clearing tuist cache
+    (clear_tuist_cache_errors, handle_tuist_cache_error),
+    # Regular retry errors
+    (retry_errors, handle_regular_error),
+]
 
-    Priority is applied globally across all messages, not per-message. Xcode can
-    emit multiple errorSummaries for one failure (e.g. a short "Simulator device
-    failed to install the application" alongside a long "Placeholder did not exist"
-    message). Since the first matched handler calls set_retry_build() -> sys.exit(0),
-    matching per-message would let an earlier, lower-priority message win over a
-    later, higher-priority one. Joining the messages and checking categories in
-    priority order ensures the correct handler runs regardless of message order.
+
+MAX_EXCERPT_LENGTH = 300
+
+
+def excerpt(text, start, end):
+    """The matched text widened to its whole line, and trimmed if that line is huge.
+
+    Reporting the offending line rather than the pattern that caught it makes the CI log
+    self-explanatory: the reader sees the actual diagnostic instead of a regex.
     """
+    line_start = text.rfind("\n", 0, start) + 1
+    line_end = text.find("\n", end)
+    if line_end == -1:
+        line_end = len(text)
+    line = text[line_start:line_end].strip()
+    if len(line) > MAX_EXCERPT_LENGTH:
+        line = line[: MAX_EXCERPT_LENGTH - 3] + "..."
+    return line
+
+
+def find_handler(text):
+    """Return the `(excerpt, handler)` of the highest-priority category matching `text`.
+
+    Priority is applied globally across the whole text, not per message. Xcode can emit
+    multiple errorSummaries for one failure (e.g. a short "Simulator device failed to
+    install the application" alongside a long "Placeholder did not exist" message). Since
+    the first matched handler calls set_retry_build() -> sys.exit(0), matching per message
+    would let an earlier, lower-priority message win over a later, higher-priority one.
+    Checking the categories in priority order against the joined text ensures the correct
+    handler runs regardless of message order.
+
+    Plain string patterns match as case-insensitive substrings; compiled patterns are
+    matched as regular expressions, for the cases where a substring is too blunt to
+    separate a real diagnostic from log noise.
+    """
+    # Lowered once rather than per pattern: build logs routinely reach tens of megabytes.
+    lowered = text.lower()
+    for error_list, handler in handlers:
+        for pattern in error_list:
+            if isinstance(pattern, re.Pattern):
+                match = pattern.search(text)
+                if match:
+                    return excerpt(text, match.start(), match.end()), handler
+            else:
+                index = lowered.find(pattern.lower())
+                if index != -1:
+                    return excerpt(text, index, index + len(pattern)), handler
+    return None, None
+
+
+def process_errors(error_messages):
+    """Process error messages and handle the single highest-priority match."""
     # Accept both string and list input
     if isinstance(error_messages, str):
         error_messages = [error_messages]
-    combined = "\n".join(error_messages).lower()
-
-    # Ordered highest-priority first; the first category to match wins.
-    handlers = [
-        # Linker errors that require clearing both derived data and tuist cache
-        (clear_derived_data_and_tuist_cache_errors, handle_derived_data_and_tuist_cache_error),
-        # Errors that require clearing derived data
-        (clear_derived_data_errors, handle_derived_data_error),
-        # Errors that require recreating simulators from scratch
-        (recreate_simulators_errors, handle_recreate_simulators_error),
-        # Errors that require a simulator reset
-        (simulator_errors, handle_simulator_error),
-        # Errors that require clearing tuist cache
-        (clear_tuist_cache_errors, handle_tuist_cache_error),
-        # Regular retry errors
-        (retry_errors, handle_regular_error),
-    ]
-    for error_list, handler in handlers:
-        for error in error_list:
-            if error.lower() in combined:
-                handler(error)  # calls set_retry_build() -> sys.exit(0)
-                return
+    matched, handler = find_handler("\n".join(error_messages))
+    if handler:
+        handler(matched)  # calls set_retry_build() -> sys.exit(0)
 
 
 def get_xcresult_errors(xcresult_path):
@@ -233,6 +292,34 @@ def get_xcresult_errors(xcresult_path):
         return []
 
 
+def collect_test_failures(entries):
+    """Return every test failure recorded by the xcresult bundles of this invocation."""
+    failures = []
+    for path, name in entries:
+        if name.endswith(".xcresult"):
+            failures.extend(get_test_failures(path))
+    return failures
+
+
+def find_genuine_test_failures(failures):
+    """Return the test failures that no infrastructure pattern explains.
+
+    A failing assertion produces the same failure on every rerun, so clearing caches and
+    replaying the lane only multiplies the wall-clock cost of a build that was always going
+    to be red. Failures that *are* infrastructure - a crashed test runner, a bundle that
+    could not be loaded - match one of the categories above and still reach their handler.
+    """
+    return [failure for failure in failures if find_handler(failure["message"])[1] is None]
+
+
+def report_genuine_test_failures(failures):
+    """Explain why no retry is offered, so the abort that follows isn't a mystery."""
+    print(f"Found {len(failures)} test failure(s) unrelated to build infrastructure; skipping retry.")
+    print("A retry cannot fix a failing test, so the build is failed immediately instead.")
+    for failure in failures:
+        print(f"  - {format_test_identifier(failure['path'])}")
+
+
 def set_retry_build():
     """Set RETRY_BUILD flag in GitHub environment"""
     env_file_path = os.getenv("GITHUB_ENV")
@@ -242,16 +329,37 @@ def set_retry_build():
     sys.exit(0)
 
 
-if not os.path.exists("log"):
-    print(f"Error: 'log' directory not found in {os.getcwd()}")
-else:
-    for file_name in os.listdir("log"):
-        file_path = f"log/{file_name}"
+def main():
+    if not os.path.isdir(LOG_DIR):
+        print(f"Error: '{LOG_DIR}' directory not found in {os.getcwd()}")
+        return
 
-        if file_name.endswith(".log"):
-            with open(file_path, "r", encoding="utf-8") as log_file:
-                log_file_contents = log_file.read()
-                process_errors(log_file_contents)
+    entries = scoped_log_entries()
+    if not entries:
+        # The invocation failed before writing anything, so there is nothing to classify and
+        # no basis for a retry. Say so rather than exiting silently into an unexplained abort.
+        print(f"No {LOG_DIR}/ entries were written by this invocation; nothing to analyse.")
+        return
 
-        elif file_name.endswith(".xcresult"):
-            process_errors(get_xcresult_errors(file_path))
+    test_failures = collect_test_failures(entries)
+    genuine_test_failures = find_genuine_test_failures(test_failures)
+    if genuine_test_failures:
+        report_genuine_test_failures(genuine_test_failures)
+        return
+
+    for path, name in entries:
+        if name.endswith(".log"):
+            with open(path, "r", encoding="utf-8", errors="replace") as log_file:
+                process_errors(log_file.read())
+        elif name.endswith(".xcresult"):
+            process_errors(get_xcresult_errors(path))
+
+    # Nothing in the build log or the error summaries explained the failure, but every test
+    # failure above was classified as infrastructure. Analyse those messages too rather than
+    # abort, for the cases where the only trace of a flaky runner is the failure it produced.
+    if test_failures:
+        process_errors([failure["message"] for failure in test_failures])
+
+
+if __name__ == "__main__":
+    main()

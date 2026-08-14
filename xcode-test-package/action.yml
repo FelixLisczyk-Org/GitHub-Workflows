@@ -37,9 +37,15 @@ runs:
           swiftgen config run --config swiftgen.yml
         fi
       shell: bash -leo pipefail {0}
+    # Each invocation is preceded by a scope marker so the analysis steps below read
+    # only the logs it writes, never a previous attempt's or another platform's.
     - name: Prepare Log Directory
       run: mkdir -p log && [ -e log/TestResults.xcresult ] && command rm -rf log/TestResults.xcresult || true
       shell: bash -leo pipefail {0}
+    - name: Scope Build Logs (iOS)
+      run: "${{ github.action_path }}/../shared-scripts/scope-build-logs.sh"
+      shell: bash -leo pipefail {0}
+      if: inputs.platform == 'ios'
     - name: Run Unit Tests (iOS)
       id: test-ios
       continue-on-error: true
@@ -63,6 +69,10 @@ runs:
       run: python3 ${{ github.action_path }}/../shared-scripts/check-build-errors.py
       shell: bash -leo pipefail {0}
       if: inputs.platform == 'ios' && steps.test-ios.outcome == 'failure'
+    - name: Scope Build Logs (iOS) (Retry 1)
+      run: "${{ github.action_path }}/../shared-scripts/scope-build-logs.sh"
+      shell: bash -leo pipefail {0}
+      if: inputs.platform == 'ios' && steps.test-ios.outcome == 'failure' && env.RETRY_BUILD == 'true'
     - name: Run Unit Tests (iOS) (Retry 1)
       id: retry-ios-1
       continue-on-error: true
@@ -95,6 +105,10 @@ runs:
       run: python3 ${{ github.action_path }}/../shared-scripts/check-build-errors.py
       shell: bash -leo pipefail {0}
       if: steps.retry-ios-1.outcome == 'failure'
+    - name: Scope Build Logs (iOS) (Retry 2)
+      run: "${{ github.action_path }}/../shared-scripts/scope-build-logs.sh"
+      shell: bash -leo pipefail {0}
+      if: steps.retry-ios-1.outcome == 'failure' && env.RETRY_BUILD == 'true'
     - name: Run Unit Tests (iOS) (Retry 2)
       id: retry-ios-2
       continue-on-error: true
@@ -123,6 +137,10 @@ runs:
       run: exit 1
       shell: bash -leo pipefail {0}
       if: steps.retry-ios-2.outcome == 'failure'
+    - name: Scope Build Logs (macOS)
+      run: "${{ github.action_path }}/../shared-scripts/scope-build-logs.sh"
+      shell: bash -leo pipefail {0}
+      if: inputs.platform == 'mac'
     - name: Run Unit Tests (macOS)
       id: test-macos
       continue-on-error: true
@@ -146,6 +164,10 @@ runs:
       run: python3 ${{ github.action_path }}/../shared-scripts/check-build-errors.py
       shell: bash -leo pipefail {0}
       if: inputs.platform == 'mac' && steps.test-macos.outcome == 'failure'
+    - name: Scope Build Logs (macOS) (Retry 1)
+      run: "${{ github.action_path }}/../shared-scripts/scope-build-logs.sh"
+      shell: bash -leo pipefail {0}
+      if: inputs.platform == 'mac' && steps.test-macos.outcome == 'failure' && env.RETRY_BUILD == 'true'
     - name: Run Unit Tests (macOS) (Retry 1)
       id: retry-macos-1
       continue-on-error: true
@@ -178,6 +200,10 @@ runs:
       run: python3 ${{ github.action_path }}/../shared-scripts/check-build-errors.py
       shell: bash -leo pipefail {0}
       if: steps.retry-macos-1.outcome == 'failure'
+    - name: Scope Build Logs (macOS) (Retry 2)
+      run: "${{ github.action_path }}/../shared-scripts/scope-build-logs.sh"
+      shell: bash -leo pipefail {0}
+      if: steps.retry-macos-1.outcome == 'failure' && env.RETRY_BUILD == 'true'
     - name: Run Unit Tests (macOS) (Retry 2)
       id: retry-macos-2
       continue-on-error: true
