@@ -28,8 +28,12 @@ case "${PROVIDER}" in
 esac
 
 # --- Check if review already exists ---
-REVIEW_MARKER="Reviewed by AI using OpenCode"
-EXISTING_REVIEW=$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --json comments --jq ".comments[].body" 2>/dev/null | grep -c "${REVIEW_MARKER}" || true)
+# The hidden marker is appended by this script, so it is present on every posted
+# review even when the model omits the visible "Reviewed by AI" footer. The
+# footer is still matched so reviews posted before the marker existed count too.
+REVIEW_STICKY_MARKER="<!-- ai-code-review -->"
+REVIEW_FOOTER_MARKER="Reviewed by AI using OpenCode"
+EXISTING_REVIEW=$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --json comments --jq ".comments[].body" 2>/dev/null | grep -c -e "${REVIEW_STICKY_MARKER}" -e "${REVIEW_FOOTER_MARKER}" || true)
 
 if [ "${EXISTING_REVIEW}" -gt 0 ]; then
   echo "AI review comment already exists on PR #${PR_NUMBER}. Skipping."
@@ -197,11 +201,17 @@ echo "::endgroup::"
 
 # Pass a short prompt; OpenCode reads context via its own file tools.
 # The model occasionally ends its turn after a few tool calls without emitting
-# the final review Markdown, leaving stdout empty. Retry a few times before
-# giving up so a single empty turn doesn't waste the whole run.
-REVIEW_PROMPT="You are performing an AI code review on a pull request. Read the file at ${WORKSPACE_CONTEXT_FILE} for the PR description, ticket context, and diff. Read the file at ${WORKSPACE_GUIDELINES_FILE} for review guidelines and output format. Then: 1) For each changed file in the diff, use your read tools to explore surrounding code for context. 2) Apply the review guidelines to identify issues. 3) Output ONLY the review Markdown in the format specified in the guidelines — no preamble."
+# the final review Markdown — typically leaving stdout empty, but sometimes
+# leaving only a line of preamble ("Let me check X first...") when a rejected
+# tool call cuts the turn short. Both cases are incomplete turns, so an attempt
+# only counts as successful once the review headline is present. Retry a few
+# times before giving up so a single incomplete turn doesn't waste the run.
+REVIEW_PROMPT="You are performing an AI code review on a pull request. Read the file at ${WORKSPACE_CONTEXT_FILE} for the PR description, ticket context, and diff. Read the file at ${WORKSPACE_GUIDELINES_FILE} for review guidelines and output format. Then: 1) For each changed file in the diff, use your read tools to explore surrounding code for context. 2) Apply the review guidelines to identify issues. 3) Output ONLY the review Markdown in the format specified in the guidelines — no preamble. Only files inside the repository are readable; tool calls outside it are rejected. If a tool call fails, continue with the context you have and still emit the full review."
 
+REVIEW_HEADLINE_PATTERN='^## AI Code Review'
 MAX_REVIEW_ATTEMPTS=3
+REVIEW_COMPLETE=false
+
 for attempt in $(seq 1 "${MAX_REVIEW_ATTEMPTS}"); do
   echo "Running OpenCode (attempt ${attempt}/${MAX_REVIEW_ATTEMPTS})..."
 
@@ -219,13 +229,21 @@ for attempt in $(seq 1 "${MAX_REVIEW_ATTEMPTS}"); do
     cat "${STDERR_FILE}"
   fi
 
-  if [ -s "${REVIEW_FILE}" ]; then
-    echo "OpenCode produced review output on attempt ${attempt}."
+  if [ ! -s "${REVIEW_FILE}" ]; then
+    echo "::warning::OpenCode produced no review output (attempt ${attempt}/${MAX_REVIEW_ATTEMPTS})."
+  elif ! grep -q "${REVIEW_HEADLINE_PATTERN}" "${REVIEW_FILE}"; then
+    echo "::warning::OpenCode output has no '## AI Code Review' headline (attempt ${attempt}/${MAX_REVIEW_ATTEMPTS}). Discarding it as an incomplete turn."
+    echo "Discarded output (first 500 chars):"
+    head -c 500 "${REVIEW_FILE}"
+    echo
+  else
+    echo "OpenCode produced a complete review on attempt ${attempt}."
+    REVIEW_COMPLETE=true
     break
   fi
 
   if [ "${attempt}" -lt "${MAX_REVIEW_ATTEMPTS}" ]; then
-    echo "::warning::OpenCode produced no review output (attempt ${attempt}/${MAX_REVIEW_ATTEMPTS}). Retrying in 10s..."
+    echo "Retrying in 10s..."
     sleep 10
   fi
 done
@@ -234,8 +252,11 @@ rm -f "${CONTEXT_FILE}" "${STDERR_FILE}"
 echo "::endgroup::"
 
 # --- Validate output ---
-if [ ! -s "${REVIEW_FILE}" ]; then
-  echo "::warning::OpenCode produced no review output after ${MAX_REVIEW_ATTEMPTS} attempts."
+# Nothing is posted unless a complete review was produced. Posting an incomplete
+# turn leaves preamble noise on the PR and, worse, no marker for the dedup check
+# above, so every re-run would pile on another junk comment.
+if [ "${REVIEW_COMPLETE}" != "true" ]; then
+  echo "::warning::OpenCode did not produce a complete review after ${MAX_REVIEW_ATTEMPTS} attempts. Nothing posted."
   rm -f "${REVIEW_FILE}"
   exit 1
 fi
@@ -243,13 +264,12 @@ fi
 # --- Strip preamble text before the review headline ---
 # OpenCode may output "thinking" text before the actual review Markdown.
 # Find the first Markdown headline (## AI Code Review) and discard everything before it.
-if grep -qn '^## AI Code Review' "${REVIEW_FILE}"; then
-  HEADLINE_LINE=$(grep -n '^## AI Code Review' "${REVIEW_FILE}" | head -1 | cut -d: -f1)
-  tail -n "+${HEADLINE_LINE}" "${REVIEW_FILE}" > "${REVIEW_FILE}.trimmed"
-  mv "${REVIEW_FILE}.trimmed" "${REVIEW_FILE}"
-else
-  echo "::warning::Review output does not contain expected '## AI Code Review' headline. Posting as-is."
-fi
+HEADLINE_LINE=$(grep -n "${REVIEW_HEADLINE_PATTERN}" "${REVIEW_FILE}" | head -1 | cut -d: -f1)
+tail -n "+${HEADLINE_LINE}" "${REVIEW_FILE}" > "${REVIEW_FILE}.trimmed"
+mv "${REVIEW_FILE}.trimmed" "${REVIEW_FILE}"
+
+# Append the hidden marker so the dedup check recognises this review on re-runs.
+printf '\n%s\n' "${REVIEW_STICKY_MARKER}" >> "${REVIEW_FILE}"
 
 echo "::group::Posting Review Comment"
 echo "Posting review comment to PR #${PR_NUMBER}..."
