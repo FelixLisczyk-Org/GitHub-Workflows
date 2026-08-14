@@ -1,0 +1,53 @@
+name: Check PR Report Status
+description: Detect whether a successful sticky-comment report already exists for a pull request
+
+# Usage:
+#
+#   - name: Check Existing Report Status
+#     id: check_report
+#     uses: <org>/GitHub-Workflows/check-pr-report-status@main
+#     with:
+#       pr_number: ${{ github.event.pull_request.number }}
+#       header: periphery-scan
+#       success_pattern: '^## (✅|🔍)'
+#
+#   - name: Run Expensive Scan
+#     if: steps.check_report.outputs.already_reported != 'true'
+#     run: ...
+#
+# `header` must match the `header:` input used with marocchino/sticky-pull-request-comment@v3
+# for the report being checked. `success_pattern` is an extended (`grep -E`) regex tested
+# against that comment's body; it is unanchored unless the caller anchors it (e.g. `^## `).
+# `already_reported` is always "false" on any lookup failure (missing/invalid input, network
+# error, malformed API response, no matching comment) — the check fails open by construction,
+# so a lookup problem never suppresses a real scan.
+
+inputs:
+  header:
+    description: "The sticky-comment header key passed to marocchino/sticky-pull-request-comment (e.g. periphery-scan)"
+    required: true
+  pr_number:
+    description: "Pull request number to check for an existing sticky-comment report"
+    required: true
+  success_pattern:
+    description: "Extended (grep -E) regex tested against the matching comment's body to determine success; unanchored unless the caller anchors it"
+    required: true
+
+outputs:
+  already_reported:
+    description: "\"true\" if a comment matching header's marker and success_pattern already exists on the PR, \"false\" otherwise (including on any lookup failure — fail-open)"
+    value: ${{ steps.check.outputs.already_reported }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Check for an existing successful report
+      id: check
+      run: "${{ github.action_path }}/scripts/check-pr-report-status.sh"
+      shell: bash -leo pipefail {0}
+      env:
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_TOKEN: ${{ github.token }}
+        HEADER: ${{ inputs.header }}
+        PR_NUMBER: ${{ inputs.pr_number }}
+        SUCCESS_PATTERN: ${{ inputs.success_pattern }}

@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${FAKE_CURL_SCENARIO:?FAKE_CURL_SCENARIO is required}"
+: "${FAKE_CURL_STATE_DIR:?FAKE_CURL_STATE_DIR is required}"
+
+mkdir -p "${FAKE_CURL_STATE_DIR}"
+printf '%s' "$1" >>"${FAKE_CURL_STATE_DIR}/calls.log"
+for argument in "${@:2}"; do
+  printf ' %s' "${argument}" >>"${FAKE_CURL_STATE_DIR}/calls.log"
+done
+printf '\n' >>"${FAKE_CURL_STATE_DIR}/calls.log"
+
+# Only the `-sf -H ... -H ... <url>` shape used by check-pr-report-status.sh is supported.
+url=""
+for argument in "$@"; do
+  case "${argument}" in
+    http*) url=${argument} ;;
+  esac
+done
+
+if [[ -z "${url}" ]]; then
+  printf 'fake curl received no URL: %s\n' "$*" >&2
+  exit 2
+fi
+
+page=1
+if [[ "${url}" =~ [?\&]page=([0-9]+) ]]; then
+  page=${BASH_REMATCH[1]}
+fi
+
+counter() {
+  local name=$1
+  local path="${FAKE_CURL_STATE_DIR}/${name}.count"
+  local value=0
+
+  if [[ -f "${path}" ]]; then
+    value=$(<"${path}")
+  fi
+  value=$((value + 1))
+  printf '%d\n' "${value}" >"${path}"
+  printf '%d\n' "${value}"
+}
+
+# Returns 0/prints a body on success, or exits 1 (curl -f behavior on a transport/HTTP
+# failure) to simulate a network error or a non-2xx response.
+case "${FAKE_CURL_SCENARIO}:${page}" in
+  no_comments:1)
+    printf '[]'
+    ;;
+  error_only:1)
+    printf '%s\n' '[{"id":1,"body":"## ❌ Periphery Scan Error\n\n<!-- Sticky Pull Request Commentperiphery-scan -->"}]'
+    ;;
+  success_only:1)
+    printf '%s\n' '[{"id":1,"body":"## ✅ Clean Code\n\n<!-- Sticky Pull Request Commentperiphery-scan -->"}]'
+    ;;
+  findings_only:1)
+    printf '%s\n' '[{"id":1,"body":"## 🔍 Unused Code Detection Results\n\n<!-- Sticky Pull Request Commentperiphery-scan -->"}]'
+    ;;
+  error_then_success:1)
+    printf '%s\n' '[{"id":1,"body":"## ❌ Periphery Scan Error\n\n<!-- Sticky Pull Request Commentperiphery-scan -->"},{"id":2,"body":"## ✅ Clean Code\n\n<!-- Sticky Pull Request Commentperiphery-scan -->"}]'
+    ;;
+  success_then_error:1)
+    printf '%s\n' '[{"id":1,"body":"## ✅ Clean Code\n\n<!-- Sticky Pull Request Commentperiphery-scan -->"},{"id":2,"body":"## ❌ Periphery Scan Error\n\n<!-- Sticky Pull Request Commentperiphery-scan -->"}]'
+    ;;
+  unrelated_success_wrong_header:1)
+    printf '%s\n' '[{"id":1,"body":"## ✅ Clean Code\n\n<!-- Sticky Pull Request Commentunused-strings-scan -->"}]'
+    ;;
+  malformed_json:1)
+    printf 'not json'
+    ;;
+  not_an_array:1)
+    printf '{"body":"nope"}'
+    ;;
+  transport_error:*)
+    exit 1
+    ;;
+  flaky_then_success:1)
+    if (( $(counter fetch) == 1 )); then
+      exit 1
+    fi
+    printf '%s\n' '[{"id":1,"body":"## ✅ Clean Code\n\n<!-- Sticky Pull Request Commentperiphery-scan -->"}]'
+    ;;
+  always_fails:*)
+    exit 1
+    ;;
+  two_pages:1)
+    # 100 unrelated comments filling the first page (no marker present).
+    entries=""
+    for i in $(seq 1 100); do
+      if [[ -n "${entries}" ]]; then
+        entries+=","
+      fi
+      entries+="{\"id\":${i},\"body\":\"noise ${i}\"}"
+    done
+    printf '[%s]' "${entries}"
+    ;;
+  two_pages:2)
+    printf '%s\n' '[{"id":101,"body":"## ✅ Clean Code\n\n<!-- Sticky Pull Request Commentperiphery-scan -->"}]'
+    ;;
+  *)
+    printf '[]'
+    ;;
+esac
