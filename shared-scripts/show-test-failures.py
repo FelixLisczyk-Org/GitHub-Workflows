@@ -7,16 +7,7 @@ import os
 import sys
 
 from log_scope import scoped_log_entries
-from xcresult_failures import format_test_identifier, get_test_failures
-
-MAX_MESSAGE_LENGTH = 500
-
-
-def truncate_message(message, max_length=MAX_MESSAGE_LENGTH):
-    """Truncate message to max length with ellipsis if needed."""
-    if len(message) <= max_length:
-        return message
-    return message[: max_length - 3] + "..."
+from xcresult_failures import format_test_identifier, get_test_failures, truncate_message
 
 
 def output_github_annotation(failure):

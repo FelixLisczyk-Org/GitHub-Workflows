@@ -16,7 +16,7 @@ import subprocess
 import sys
 
 from log_scope import LOG_DIR, scoped_log_entries
-from xcresult_failures import format_test_identifier, get_test_failures
+from xcresult_failures import format_test_identifier, get_test_failures, truncate_message
 
 clear_derived_data_errors = [
     "Underlying Error: Test crashed with signal abrt before starting test execution.",
@@ -312,12 +312,43 @@ def find_genuine_test_failures(failures):
     return [failure for failure in failures if find_handler(failure["message"])[1] is None]
 
 
+def group_failures_by_test(failures):
+    """Group failure messages under the test that produced them, keeping first-seen order.
+
+    Xcode's `retry_failed_tests` reruns a failing test within the same invocation, so a
+    single flaky test contributes one failure entry per attempt. Counting those entries
+    reports one failing test as two; grouping by test identifier counts tests instead, and
+    identical messages from the reruns collapse into the one line they always were.
+    """
+    grouped = {}
+    for failure in failures:
+        test_id = format_test_identifier(failure["path"])
+        details = (failure.get("device", ""), failure["message"])
+        messages = grouped.setdefault(test_id, [])
+        if details not in messages:
+            messages.append(details)
+    return grouped
+
+
+def format_failure_message(device, message):
+    """Indent an assertion message under its test, tagged with the device that ran it."""
+    prefix = f"[{device}] " if device else ""
+    lines = truncate_message(message).splitlines() or [""]
+    first, rest = lines[0], lines[1:]
+    return "\n".join([f"      {prefix}{first}"] + [f"      {line}" for line in rest])
+
+
 def report_genuine_test_failures(failures):
     """Explain why no retry is offered, so the abort that follows isn't a mystery."""
-    print(f"Found {len(failures)} test failure(s) unrelated to build infrastructure; skipping retry.")
+    grouped = group_failures_by_test(failures)
+    print(f"Found {len(grouped)} failing test(s) unrelated to build infrastructure; skipping retry.")
     print("A retry cannot fix a failing test, so the build is failed immediately instead.")
-    for failure in failures:
-        print(f"  - {format_test_identifier(failure['path'])}")
+    # The assertion message, not just the test name: without it the log says which test broke
+    # but never why, and the xcresult that holds the answer lives only on the runner.
+    for test_id, messages in grouped.items():
+        print(f"  - {test_id}")
+        for device, message in messages:
+            print(format_failure_message(device, message))
 
 
 def set_retry_build():

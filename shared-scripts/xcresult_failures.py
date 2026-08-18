@@ -11,6 +11,7 @@ import subprocess
 import sys
 
 XCRESULTTOOL_TIMEOUT_SECONDS = 60
+MAX_MESSAGE_LENGTH = 500
 
 
 def get_test_results(xcresult_path):
@@ -126,3 +127,10 @@ def get_test_failures(xcresult_path):
 def format_test_identifier(path):
     """Format test path as a readable identifier (e.g., TestTarget/TestClass/testMethod)."""
     return "/".join(path)
+
+
+def truncate_message(message, max_length=MAX_MESSAGE_LENGTH):
+    """Truncate message to max length with ellipsis if needed."""
+    if len(message) <= max_length:
+        return message
+    return message[: max_length - 3] + "..."
