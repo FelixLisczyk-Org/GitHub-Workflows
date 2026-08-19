@@ -139,6 +139,32 @@ if [ "${PROVIDER}" = "ollama" ]; then
 }
 JSONEOF
 )
+elif [ "${PROVIDER}" = "openrouter" ]; then
+  OPENROUTER_MODEL="${MODEL#openrouter/}"
+
+  export OPENCODE_CONFIG_CONTENT=$(cat <<JSONEOF
+{
+  "\$schema": "https://opencode.ai/config.json",
+  "tools": {
+    "bash": false
+  },
+  "provider": {
+    "openrouter": {
+      "models": {
+        "${OPENROUTER_MODEL}": {
+          "variants": {
+            "max": {
+              "reasoningEffort": "xhigh"
+            }
+          }
+        }
+      }
+    }
+  },
+  "model": "openrouter/${OPENROUTER_MODEL}"
+}
+JSONEOF
+)
 elif [ "${PROVIDER}" = "fireworks-ai" ]; then
   FIREWORKS_MODEL="${MODEL#fireworks-ai/}"
 

@@ -17,7 +17,7 @@ description: Run AI-powered code review on pull requests using OpenCode
 #         - uses: actions/checkout@v4
 #         - uses: <org>/GitHub-Workflows/ai-code-review@main
 #           with:
-#             api_key: ${{ secrets.FIREWORKS_API_KEY }}
+#             api_key: ${{ secrets.OPENROUTER_API_KEY }}
 #           env:
 #             GH_TOKEN: ${{ github.token }}
 #
@@ -47,10 +47,10 @@ inputs:
     required: true
   provider:
     description: "LLM provider name (e.g., fireworks-ai, anthropic, openai, openrouter, groq, ollama)"
-    default: "fireworks-ai"
+    default: "openrouter"
   model:
     description: "Model identifier. For most providers: provider/model-id. For ollama: model-name:cloud (e.g. kimi-k2.6:cloud)"
-    default: "fireworks-ai/accounts/fireworks/models/deepseek-v4-flash-0731"
+    default: "openrouter/deepseek/deepseek-v4-flash-0731"
 
 runs:
   using: "composite"
