@@ -115,10 +115,18 @@ echo "Context file: $(wc -c < "${CONTEXT_FILE}") bytes"
 export OPENCODE_DISABLE_PROJECT_CONFIG=true
 export OPENCODE_DISABLE_AUTOUPDATE=true
 
+# Disable session-title generation so headless reviews do not make an auxiliary
+# model request. Pin the small model to the review model as a fallback in case
+# title generation is re-enabled later.
 if [ "${PROVIDER}" = "ollama" ]; then
   export OPENCODE_CONFIG_CONTENT=$(cat <<JSONEOF
 {
   "\$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "title": {
+      "disable": true
+    }
+  },
   "tools": {
     "bash": false
   },
@@ -135,7 +143,8 @@ if [ "${PROVIDER}" = "ollama" ]; then
       }
     }
   },
-  "model": "ollama/${MODEL}"
+  "model": "ollama/${MODEL}",
+  "small_model": "ollama/${MODEL}"
 }
 JSONEOF
 )
@@ -145,6 +154,11 @@ elif [ "${PROVIDER}" = "openrouter" ]; then
   export OPENCODE_CONFIG_CONTENT=$(cat <<JSONEOF
 {
   "\$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "title": {
+      "disable": true
+    }
+  },
   "tools": {
     "bash": false
   },
@@ -161,7 +175,8 @@ elif [ "${PROVIDER}" = "openrouter" ]; then
       }
     }
   },
-  "model": "openrouter/${OPENROUTER_MODEL}"
+  "model": "openrouter/${OPENROUTER_MODEL}",
+  "small_model": "openrouter/${OPENROUTER_MODEL}"
 }
 JSONEOF
 )
@@ -171,6 +186,11 @@ elif [ "${PROVIDER}" = "fireworks-ai" ]; then
   export OPENCODE_CONFIG_CONTENT=$(cat <<JSONEOF
 {
   "\$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "title": {
+      "disable": true
+    }
+  },
   "tools": {
     "bash": false
   },
@@ -187,7 +207,8 @@ elif [ "${PROVIDER}" = "fireworks-ai" ]; then
       }
     }
   },
-  "model": "fireworks-ai/${FIREWORKS_MODEL}"
+  "model": "fireworks-ai/${FIREWORKS_MODEL}",
+  "small_model": "fireworks-ai/${FIREWORKS_MODEL}"
 }
 JSONEOF
 )
@@ -195,10 +216,16 @@ else
   export OPENCODE_CONFIG_CONTENT=$(cat <<JSONEOF
 {
   "\$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "title": {
+      "disable": true
+    }
+  },
   "tools": {
     "bash": false
   },
-  "model": "${MODEL}"
+  "model": "${MODEL}",
+  "small_model": "${MODEL}"
 }
 JSONEOF
 )
