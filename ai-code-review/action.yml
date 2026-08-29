@@ -14,7 +14,7 @@ description: Run AI-powered code review on pull requests using OpenCode
 #     review:
 #       runs-on: ubuntu-latest
 #       steps:
-#         - uses: actions/checkout@v4
+#         - uses: actions/checkout@v7
 #         - uses: <org>/GitHub-Workflows/ai-code-review@main
 #           with:
 #             api_key: ${{ secrets.OPENROUTER_API_KEY }}

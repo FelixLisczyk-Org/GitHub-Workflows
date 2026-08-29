@@ -20,7 +20,7 @@ runs:
   using: "composite"
   steps:
     - name: Checkout
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         fetch-depth: 0 # Required for scripts that access multiple branches, e.g. `increment-build-number.sh`
         ref: ${{ inputs.branch || '' }}
@@ -59,13 +59,13 @@ runs:
       shell: bash -leo pipefail {0}
     - name: (Cloud) Import Development Certificate
       id: create_keychain
-      uses: apple-actions/import-codesign-certs@v6
+      uses: apple-actions/import-codesign-certs@v7
       with:
         p12-file-base64: ${{ inputs.p12_file_development }}
         p12-password: ${{ inputs.p12_file_development_password }}
       if: contains(runner.workspace, '/Users/runner/') && inputs.p12_file_development != '' && inputs.p12_file_development_password != ''
     - name: (Cloud) Import Distribution Certificate
-      uses: apple-actions/import-codesign-certs@v6
+      uses: apple-actions/import-codesign-certs@v7
       with:
         create-keychain: false
         keychain-password: "${{ steps.create_keychain.outputs.keychain-password }}"
@@ -96,7 +96,7 @@ runs:
       shell: bash -leo pipefail {0}
       if: hashFiles('Gemfile') != ''
     - name: Tuist Cache (Restore)
-      uses: actions/cache/restore@v5
+      uses: actions/cache/restore@v6
       with:
         path: Tuist/.build
         key: ${{ runner.os }}-tuist-${{ hashFiles('Tuist/Package.resolved') }}

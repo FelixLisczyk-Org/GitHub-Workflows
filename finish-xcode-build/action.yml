@@ -48,7 +48,7 @@ runs:
       shell: bash -leo pipefail {0}
       if: job.status == 'success' && contains(runner.workspace, '/Users/runner/') == false
     - name: Tuist Cache (Save)
-      uses: actions/cache/save@v5
+      uses: actions/cache/save@v6
       with:
         path: Tuist/.build
         key: ${{ runner.os }}-tuist-${{ hashFiles('Tuist/Package.resolved') }}
