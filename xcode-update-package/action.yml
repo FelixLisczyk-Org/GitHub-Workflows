@@ -35,7 +35,7 @@ runs:
     - name: Update Host App Dependencies
       run: |
         if [ -f Tuist.swift ]; then
-          tuist install --update
+          TUIST_USE_SWIFTERPM=0 tuist install --update && tuist install
         fi
       shell: bash -leo pipefail {0}
     - name: Run Unit Tests

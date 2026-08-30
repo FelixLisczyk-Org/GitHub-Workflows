@@ -24,7 +24,7 @@ runs:
   steps:
     - name: Resolve Swift Package Dependencies
       if: ${{ inputs.update_deps == 'true' }}
-      run: tuist install --update --quiet
+      run: TUIST_USE_SWIFTERPM=0 tuist install --update --quiet && tuist install
       shell: bash -leo pipefail {0}
     # Each invocation is preceded by a scope marker so the analysis steps below read only
     # the logs it writes. Every platform step in the job shares one `log` directory.
