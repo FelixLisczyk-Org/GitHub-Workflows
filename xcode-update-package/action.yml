@@ -23,12 +23,6 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Generate Xcode Project
-      run: |
-        if [ -f Tuist.swift ]; then
-          tuist install && tuist cache && tuist generate --no-open
-        fi
-      shell: bash -leo pipefail {0}
     - name: Update Host App Dependencies
       run: |
         if [ -f Tuist.swift ]; then
@@ -37,6 +31,12 @@ runs:
       shell: bash -leo pipefail {0}
     - name: Update Swift Package Dependencies
       run: swift package update
+      shell: bash -leo pipefail {0}
+    - name: Generate Xcode Project
+      run: |
+        if [ -f Tuist.swift ]; then
+          tuist install && tuist cache && tuist generate --no-open
+        fi
       shell: bash -leo pipefail {0}
     - name: Run Unit Tests
       uses: FelixLisczyk-Org/GitHub-Workflows/xcode-test-package@main
