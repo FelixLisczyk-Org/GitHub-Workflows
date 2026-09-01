@@ -105,6 +105,18 @@ def regenerate_project_without_binary_cache():
     return 0
 
 
+def set_retry_after_project_regeneration():
+    """Offer a retry only when project regeneration completed successfully."""
+    regeneration_status = regenerate_project_without_binary_cache()
+    if regeneration_status != 0:
+        print(
+            f"Project regeneration failed with status {regeneration_status}; "
+            "refusing to schedule a retry."
+        )
+        sys.exit(1)
+    set_retry_build()
+
+
 def handle_derived_data_and_tuist_cache_error(err):
     """Clear stale build state and regenerate without warming the binary cache."""
     print(f"Found linker error requiring derived data and Tuist state clearing: {err}")
@@ -121,8 +133,7 @@ def handle_derived_data_and_tuist_cache_error(err):
     if os.path.exists(cache_marker_path):
         print(f"Clearing project-local Tuist dependency-state marker at {cache_marker_path}")
         os.system(f"rm -f {cache_marker_path}")
-    regenerate_project_without_binary_cache()
-    set_retry_build()
+    set_retry_after_project_regeneration()
 
 
 def handle_derived_data_error(err):
@@ -184,8 +195,7 @@ def handle_tuist_cache_error(err):
     if os.path.exists(cache_marker_path):
         print(f"Clearing project-local Tuist dependency-state marker at {cache_marker_path}")
         os.system(f"rm -f {cache_marker_path}")
-    regenerate_project_without_binary_cache()
-    set_retry_build()
+    set_retry_after_project_regeneration()
 
 
 def handle_regular_error(err):

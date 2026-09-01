@@ -104,7 +104,7 @@ def test_unrelated_patterns_still_match():
         check(handler is expected, f"{text[:52]!r} maps to {getattr(expected, '__name__', None)}")
 
 
-def recovery_commands(handler, generate_script=None, with_tuist_manifest=False):
+def recovery_outcome(handler, generate_script=None, with_tuist_manifest=False, failing_command=None):
     """Run a recovery handler with shell commands captured instead of executed."""
     root = tempfile.mkdtemp()
     if generate_script is not None:
@@ -117,19 +117,33 @@ def recovery_commands(handler, generate_script=None, with_tuist_manifest=False):
             handle.write("// fixture\n")
 
     commands = []
+    retried = False
+    exit_code = None
     original_system = cbe.os.system
     original_set_retry = getattr(cbe, "set_retry_build")
     original_cwd = os.getcwd()
-    cbe.os.system = lambda command: commands.append(command) or 0
-    setattr(cbe, "set_retry_build", lambda: None)
+
+    def fake_system(command):
+        commands.append(command)
+        return 1 if command == failing_command else 0
+
+    def fake_set_retry_build():
+        nonlocal retried
+        retried = True
+
+    cbe.os.system = fake_system
+    setattr(cbe, "set_retry_build", fake_set_retry_build)
     try:
         os.chdir(root)
-        handler("fixture error")
+        try:
+            handler("fixture error")
+        except SystemExit as error:
+            exit_code = error.code
     finally:
         os.chdir(original_cwd)
         cbe.os.system = original_system
         setattr(cbe, "set_retry_build", original_set_retry)
-    return commands
+    return commands, retried, exit_code
 
 
 def test_recovery_regenerates_without_warming_binary_cache():
@@ -158,7 +172,7 @@ def test_recovery_regenerates_without_warming_binary_cache():
         ),
     ]
     for handler, generate_script, with_manifest, expected_command, label in cases:
-        commands = recovery_commands(handler, generate_script, with_manifest)
+        commands, retried, exit_code = recovery_outcome(handler, generate_script, with_manifest)
         if expected_command is None:
             check(
                 not any(command.startswith(("./generate.sh", "tuist install")) for command in commands),
@@ -170,6 +184,38 @@ def test_recovery_regenerates_without_warming_binary_cache():
             all("tuist cache" not in command for command in commands),
             f"{label}; no synchronous Tuist binary-cache warm",
         )
+        check(retried is True, f"{label}; successful regeneration schedules a retry")
+        check(exit_code is None, f"{label}; successful regeneration does not fail analysis")
+
+
+def test_failed_regeneration_refuses_retry():
+    """A failed authoritative or fallback generation aborts instead of retrying."""
+    cases = [
+        (
+            cbe.handle_derived_data_and_tuist_cache_error,
+            "executable",
+            True,
+            "./generate.sh --no-binary-cache",
+            "generate.sh failure",
+        ),
+        (
+            cbe.handle_tuist_cache_error,
+            "non-executable",
+            True,
+            "tuist install && tuist generate --no-open",
+            "Tuist fallback failure",
+        ),
+    ]
+    for handler, generate_script, with_manifest, failing_command, label in cases:
+        commands, retried, exit_code = recovery_outcome(
+            handler,
+            generate_script,
+            with_manifest,
+            failing_command,
+        )
+        check(failing_command in commands, f"{label} is observed by the recovery handler")
+        check(retried is False, f"{label} does not set RETRY_BUILD")
+        check(exit_code == 1, f"{label} fails the analysis step")
 
 
 def test_priority_is_global():
@@ -394,6 +440,7 @@ def test_non_xcresult_entries_are_not_probed():
 test_pattern_precision()
 test_unrelated_patterns_still_match()
 test_recovery_regenerates_without_warming_binary_cache()
+test_failed_regeneration_refuses_retry()
 test_priority_is_global()
 test_scoping_ignores_earlier_invocations()
 test_scoping_keeps_current_invocation()
