@@ -92,6 +92,19 @@ retry_errors = [
 ]
 
 
+def regenerate_project_without_binary_cache():
+    """Regenerate through the repository entry point, with a Tuist fallback."""
+    if os.path.isfile("generate.sh") and os.access("generate.sh", os.X_OK):
+        print("Regenerating through generate.sh without using the binary cache")
+        return os.system("./generate.sh --no-binary-cache")
+
+    if os.path.isfile("Tuist.swift"):
+        print("Reinstalling Tuist dependencies and regenerating without warming the binary cache")
+        return os.system("tuist install && tuist generate --no-open")
+
+    return 0
+
+
 def handle_derived_data_and_tuist_cache_error(err):
     """Clear stale build state and regenerate without warming the binary cache."""
     print(f"Found linker error requiring derived data and Tuist state clearing: {err}")
@@ -108,9 +121,7 @@ def handle_derived_data_and_tuist_cache_error(err):
     if os.path.exists(cache_marker_path):
         print(f"Clearing project-local Tuist dependency-state marker at {cache_marker_path}")
         os.system(f"rm -f {cache_marker_path}")
-    if os.path.exists("Tuist.swift"):
-        print("Reinstalling Tuist dependencies and regenerating without warming the binary cache")
-        os.system("tuist install && tuist generate --no-open")
+    regenerate_project_without_binary_cache()
     set_retry_build()
 
 
@@ -173,8 +184,7 @@ def handle_tuist_cache_error(err):
     if os.path.exists(cache_marker_path):
         print(f"Clearing project-local Tuist dependency-state marker at {cache_marker_path}")
         os.system(f"rm -f {cache_marker_path}")
-    print("Reinstalling Tuist dependencies and regenerating without warming the binary cache")
-    os.system("tuist install && tuist generate --no-open")
+    regenerate_project_without_binary_cache()
     set_retry_build()
 
 

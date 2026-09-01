@@ -104,9 +104,14 @@ def test_unrelated_patterns_still_match():
         check(handler is expected, f"{text[:52]!r} maps to {getattr(expected, '__name__', None)}")
 
 
-def recovery_commands(handler, with_tuist_manifest):
+def recovery_commands(handler, generate_script=None, with_tuist_manifest=False):
     """Run a recovery handler with shell commands captured instead of executed."""
     root = tempfile.mkdtemp()
+    if generate_script is not None:
+        generate_path = os.path.join(root, "generate.sh")
+        with open(generate_path, "w", encoding="utf-8") as handle:
+            handle.write("#!/bin/bash\n")
+        os.chmod(generate_path, 0o755 if generate_script == "executable" else 0o644)
     if with_tuist_manifest:
         with open(os.path.join(root, "Tuist.swift"), "w", encoding="utf-8") as handle:
             handle.write("// fixture\n")
@@ -128,20 +133,42 @@ def recovery_commands(handler, with_tuist_manifest):
 
 
 def test_recovery_regenerates_without_warming_binary_cache():
-    """Both Tuist recovery handlers reinstall and generate, but never warm binaries."""
+    """Recovery prefers generate.sh, falls back to Tuist, and never warms binaries."""
     cases = [
-        (cbe.handle_derived_data_and_tuist_cache_error, True, "derived-data recovery"),
-        (cbe.handle_tuist_cache_error, False, "Tuist-state recovery"),
+        (
+            cbe.handle_derived_data_and_tuist_cache_error,
+            "executable",
+            True,
+            "./generate.sh --no-binary-cache",
+            "derived-data recovery prefers executable generate.sh",
+        ),
+        (
+            cbe.handle_tuist_cache_error,
+            "non-executable",
+            True,
+            "tuist install && tuist generate --no-open",
+            "Tuist-state recovery falls back when generate.sh is not executable",
+        ),
+        (
+            cbe.handle_tuist_cache_error,
+            None,
+            False,
+            None,
+            "recovery does nothing when no supported project entry point exists",
+        ),
     ]
-    for handler, with_manifest, label in cases:
-        commands = recovery_commands(handler, with_manifest)
-        check(
-            "tuist install && tuist generate --no-open" in commands,
-            f"{label} reinstalls dependencies and regenerates the project",
-        )
+    for handler, generate_script, with_manifest, expected_command, label in cases:
+        commands = recovery_commands(handler, generate_script, with_manifest)
+        if expected_command is None:
+            check(
+                not any(command.startswith(("./generate.sh", "tuist install")) for command in commands),
+                label,
+            )
+        else:
+            check(expected_command in commands, label)
         check(
             all("tuist cache" not in command for command in commands),
-            f"{label} does not synchronously warm the Tuist binary cache",
+            f"{label}; no synchronous Tuist binary-cache warm",
         )
 
 
