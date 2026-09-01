@@ -24,18 +24,19 @@ runs:
       with:
         fetch-depth: 0 # Required for scripts that access multiple branches, e.g. `increment-build-number.sh`
         ref: ${{ inputs.branch || '' }}
-        # Persistent self-hosted workspaces retain Tuist/.build locally. Cloud runners
-        # keep checkout's normal clean behavior because their workspaces are ephemeral.
+        # Persistent self-hosted workspaces retain project-local SwiftPM/Tuist
+        # dependency state in Tuist/.build. This is separate from Tuist's global
+        # binary module cache. Cloud workspaces are ephemeral and use normal cleaning.
         clean: ${{ contains(runner.workspace, '/Users/runner/') }}
-    - name: (Local) Clean Workspace, Preserving Tuist Cache
+    - name: (Local) Clean Workspace, Preserving Tuist Dependency State
       run: |
-        # checkout's broad clean would remove the local Tuist cache on persistent runners.
+        # checkout's broad clean would remove project-local dependency state on persistent runners.
         # Reset tracked files normally, then remove every ignored/untracked path except it.
         git reset --hard
         git clean -ffdx -e Tuist/.build
       shell: bash -leo pipefail {0}
       if: contains(runner.workspace, '/Users/runner/') == false
-    - name: (Local) Validate Tuist Cache
+    - name: (Local) Validate Tuist Dependency State
       run: "${{ github.action_path }}/scripts/validate-tuist-cache.sh"
       shell: bash -leo pipefail {0}
       if: contains(runner.workspace, '/Users/runner/') == false
@@ -95,7 +96,7 @@ runs:
       run: bundle install
       shell: bash -leo pipefail {0}
       if: hashFiles('Gemfile') != ''
-    - name: Tuist Cache (Restore)
+    - name: (Cloud) Tuist Dependency State (Restore)
       uses: actions/cache/restore@v6
       with:
         path: Tuist/.build

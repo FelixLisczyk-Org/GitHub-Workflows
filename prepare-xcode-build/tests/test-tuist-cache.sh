@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Covers the local Tuist cache handling of `prepare-xcode-build`: the workspace
-# cleanup that preserves the cache, and `scripts/validate-tuist-cache.sh`.
+# Covers project-local Tuist dependency-state handling in `prepare-xcode-build`:
+# workspace cleanup preserves Tuist/.build without treating it as the global
+# binary module cache, and `scripts/validate-tuist-cache.sh` validates its marker.
 #
 # The action runs its steps in a login shell, where the user profile redefines
 # `rm` as a wrapper around `trash`. The harness exports an equivalent wrapper so
@@ -125,7 +126,7 @@ test_package_layout_without_tuist_directory_is_a_no_op() {
   assert_no_trash_calls
 }
 
-# PL-371: a new or reset runner has no cache yet and must still build.
+# PL-371: a new or reset runner has no dependency state yet and must still build.
 test_fresh_runner_without_cache_is_a_no_op() {
   make_workspace || return 1
   write_manifest
@@ -173,7 +174,7 @@ test_cache_with_stale_marker_is_cleared() {
 }
 
 # PL-234: the marker is dropped up front, so a job that fails or is cancelled
-# leaves a cache the next job refuses to trust.
+# leaves dependency state the next job refuses to trust.
 test_valid_marker_is_invalidated_and_cache_preserved() {
   make_workspace || return 1
   write_manifest
@@ -187,7 +188,7 @@ test_valid_marker_is_invalidated_and_cache_preserved() {
   assert_no_trash_calls
 }
 
-# PL-371: checkout's broad clean would drop the cache, so the action resets and
+# PL-371: checkout's broad clean would drop dependency state, so the action resets and
 # cleans by hand. Other ignored output must still go.
 test_workspace_cleanup_preserves_only_the_cache() {
   make_workspace || return 1

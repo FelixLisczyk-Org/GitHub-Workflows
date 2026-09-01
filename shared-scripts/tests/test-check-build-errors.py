@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Covers the three guards that keep `check-build-errors.py` from spending a Tuist cache
-rebuild and two full lane reruns on a failure a retry cannot fix:
+Covers the guards that keep `check-build-errors.py` from synchronously warming the Tuist
+binary cache or rerunning a full lane for a failure a retry cannot fix:
 
 * the analysis is scoped to the logs of the current invocation (`log_scope`),
 * "no such file or directory" only matches a real compiler/linker diagnostic,
@@ -102,6 +102,47 @@ def test_unrelated_patterns_still_match():
     for text, expected in cases:
         _, handler = cbe.find_handler(text)
         check(handler is expected, f"{text[:52]!r} maps to {getattr(expected, '__name__', None)}")
+
+
+def recovery_commands(handler, with_tuist_manifest):
+    """Run a recovery handler with shell commands captured instead of executed."""
+    root = tempfile.mkdtemp()
+    if with_tuist_manifest:
+        with open(os.path.join(root, "Tuist.swift"), "w", encoding="utf-8") as handle:
+            handle.write("// fixture\n")
+
+    commands = []
+    original_system = cbe.os.system
+    original_set_retry = getattr(cbe, "set_retry_build")
+    original_cwd = os.getcwd()
+    cbe.os.system = lambda command: commands.append(command) or 0
+    setattr(cbe, "set_retry_build", lambda: None)
+    try:
+        os.chdir(root)
+        handler("fixture error")
+    finally:
+        os.chdir(original_cwd)
+        cbe.os.system = original_system
+        setattr(cbe, "set_retry_build", original_set_retry)
+    return commands
+
+
+def test_recovery_regenerates_without_warming_binary_cache():
+    """Both Tuist recovery handlers reinstall and generate, but never warm binaries."""
+    cases = [
+        (cbe.handle_derived_data_and_tuist_cache_error, True, "derived-data recovery"),
+        (cbe.handle_tuist_cache_error, False, "Tuist-state recovery"),
+    ]
+    for handler, with_manifest, label in cases:
+        commands = recovery_commands(handler, with_manifest)
+        check(
+            "tuist install && tuist generate --no-open" in commands,
+            f"{label} reinstalls dependencies and regenerates the project",
+        )
+        check(
+            all("tuist cache" not in command for command in commands),
+            f"{label} does not synchronously warm the Tuist binary cache",
+        )
 
 
 def test_priority_is_global():
@@ -325,6 +366,7 @@ def test_non_xcresult_entries_are_not_probed():
 
 test_pattern_precision()
 test_unrelated_patterns_still_match()
+test_recovery_regenerates_without_warming_binary_cache()
 test_priority_is_global()
 test_scoping_ignores_earlier_invocations()
 test_scoping_keeps_current_invocation()

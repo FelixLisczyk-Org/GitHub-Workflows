@@ -34,8 +34,8 @@ clear_derived_data_errors = [
 #   [cloudthumbnails.client] getattrlist() failed for file:///... - No such file or directory
 #   [logging-persist] os_unix.c:51044: (2) open(/private/var/db/DetachedSignatures) - No such file or directory
 #   fopen failed for data file: errno = 2 (No such file or directory)
-# Matching those as a bare substring made a passing platform's log trigger a 17-minute
-# Tuist cache rebuild and a full lane rerun on an unrelated platform.
+# Matching those as a bare substring made a passing platform's log trigger a synchronous
+# Tuist binary cache warm and a full lane rerun on an unrelated platform.
 missing_build_input_error = re.compile(r"no such file or directory:\s*\S", re.IGNORECASE)
 
 clear_derived_data_and_tuist_cache_errors = [
@@ -93,24 +93,24 @@ retry_errors = [
 
 
 def handle_derived_data_and_tuist_cache_error(err):
-    """Handle linker errors by clearing both Xcode derived data and Tuist cache"""
-    print(f"Found linker error requiring derived data and tuist cache clearing: {err}")
+    """Clear stale build state and regenerate without warming the binary cache."""
+    print(f"Found linker error requiring derived data and Tuist state clearing: {err}")
     os.system(f"{os.path.dirname(__file__)}/clear-xcode-derived-data.sh")
     tuist_cache_path = os.path.expanduser("~/.cache/tuist")
     if os.path.exists(tuist_cache_path):
-        print(f"Clearing global tuist cache at {tuist_cache_path}")
+        print(f"Clearing global Tuist binary cache at {tuist_cache_path}")
         os.system(f"rm -rf {tuist_cache_path}")
     project_tuist_path = "Tuist/.build"
     cache_marker_path = os.path.join(project_tuist_path, ".package-resolved-hash")
     if os.path.exists(project_tuist_path):
-        print(f"Clearing project tuist cache at {project_tuist_path}")
+        print(f"Clearing project-local Tuist dependency state at {project_tuist_path}")
         os.system(f"rm -rf {project_tuist_path}")
     if os.path.exists(cache_marker_path):
-        print(f"Clearing project tuist cache marker at {cache_marker_path}")
+        print(f"Clearing project-local Tuist dependency-state marker at {cache_marker_path}")
         os.system(f"rm -f {cache_marker_path}")
     if os.path.exists("Tuist.swift"):
-        print("Regenerating tuist cache")
-        os.system("tuist install && tuist cache && tuist generate --no-open")
+        print("Reinstalling Tuist dependencies and regenerating without warming the binary cache")
+        os.system("tuist install && tuist generate --no-open")
     set_retry_build()
 
 
@@ -155,26 +155,26 @@ def handle_recreate_simulators_error(err):
 
 
 def handle_tuist_cache_error(err):
-    """Handle tuist cache errors by clearing the cache"""
-    print(f"Found error that requires clearing tuist cache: {err}")
+    """Clear stale Tuist state and regenerate without warming the binary cache."""
+    print(f"Found error that requires clearing Tuist state: {err}")
     tuist_cache_path = os.path.expanduser("~/.cache/tuist")
     if os.path.exists(tuist_cache_path):
-        print(f"Clearing global tuist cache at {tuist_cache_path}")
+        print(f"Clearing global Tuist binary cache at {tuist_cache_path}")
         os.system(f"rm -rf {tuist_cache_path}")
     else:
-        print(f"Global tuist cache not found at {tuist_cache_path}")
+        print(f"Global Tuist binary cache not found at {tuist_cache_path}")
     project_tuist_path = "Tuist/.build"
     cache_marker_path = os.path.join(project_tuist_path, ".package-resolved-hash")
     if os.path.exists(project_tuist_path):
-        print(f"Clearing project tuist cache at {project_tuist_path}")
+        print(f"Clearing project-local Tuist dependency state at {project_tuist_path}")
         os.system(f"rm -rf {project_tuist_path}")
     else:
-        print(f"Project tuist cache not found at {project_tuist_path}")
+        print(f"Project-local Tuist dependency state not found at {project_tuist_path}")
     if os.path.exists(cache_marker_path):
-        print(f"Clearing project tuist cache marker at {cache_marker_path}")
+        print(f"Clearing project-local Tuist dependency-state marker at {cache_marker_path}")
         os.system(f"rm -f {cache_marker_path}")
-    print("Regenerating tuist cache")
-    os.system("tuist install && tuist cache && tuist generate --no-open")
+    print("Reinstalling Tuist dependencies and regenerating without warming the binary cache")
+    os.system("tuist install && tuist generate --no-open")
     set_retry_build()
 
 
@@ -186,7 +186,7 @@ def handle_regular_error(err):
 
 # Ordered highest-priority first; the first category to match wins.
 handlers = [
-    # Linker errors that require clearing both derived data and tuist cache
+    # Linker errors that require clearing DerivedData and stale Tuist state
     (clear_derived_data_and_tuist_cache_errors, handle_derived_data_and_tuist_cache_error),
     # Errors that require clearing derived data
     (clear_derived_data_errors, handle_derived_data_error),
@@ -194,7 +194,7 @@ handlers = [
     (recreate_simulators_errors, handle_recreate_simulators_error),
     # Errors that require a simulator reset
     (simulator_errors, handle_simulator_error),
-    # Errors that require clearing tuist cache
+    # Errors that require clearing stale Tuist state
     (clear_tuist_cache_errors, handle_tuist_cache_error),
     # Regular retry errors
     (retry_errors, handle_regular_error),

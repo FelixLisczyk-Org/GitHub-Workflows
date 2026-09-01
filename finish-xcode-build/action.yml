@@ -38,7 +38,7 @@ runs:
         git config --global --remove-section safe || echo "[safe] section not found"
       shell: bash -leo pipefail {0}
       if: always()
-    - name: (Local) Mark Tuist Cache Valid
+    - name: (Local) Mark Tuist Dependency State Valid
       run: |
         cache_directory="Tuist/.build"
         marker="$cache_directory/.package-resolved-hash"
@@ -47,7 +47,7 @@ runs:
         fi
       shell: bash -leo pipefail {0}
       if: job.status == 'success' && contains(runner.workspace, '/Users/runner/') == false
-    - name: Tuist Cache (Save)
+    - name: (Cloud) Tuist Dependency State (Save)
       uses: actions/cache/save@v6
       with:
         path: Tuist/.build
