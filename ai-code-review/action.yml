@@ -45,6 +45,9 @@ inputs:
   api_key:
     description: "API key for the LLM provider"
     required: true
+  pr_number:
+    description: "Pull request number to review (for manual workflow dispatches)"
+    required: false
   provider:
     description: "LLM provider name (e.g., fireworks-ai, anthropic, openai, openrouter, groq, ollama)"
     default: "openrouter"
@@ -82,7 +85,7 @@ runs:
         PROVIDER: ${{ inputs.provider }}
         MODEL: ${{ inputs.model }}
         API_KEY: ${{ inputs.api_key }}
-        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number }}
         ACTION_PATH: ${{ github.action_path }}
 
     - name: Review skipped or failed
