@@ -16,13 +16,42 @@ inputs:
   delay:
     description: "Delay (e.g. 30m)"
     required: true
+  version:
+    description: "Uploaded app version"
+    required: false
+    default: ""
+  build:
+    description: "Uploaded app build number"
+    required: false
+    default: ""
 runs:
   using: "composite"
   steps:
+    - name: Create Submission Payload
+      id: payload
+      env:
+        SUBMISSION_PLATFORM: ${{ inputs.platform }}
+        SUBMISSION_DESTINATION: ${{ inputs.destination }}
+        SUBMISSION_BRANCH: ${{ inputs.branch }}
+        SUBMISSION_DELAY: ${{ inputs.delay }}
+        SUBMISSION_VERSION: ${{ inputs.version }}
+        SUBMISSION_BUILD: ${{ inputs.build }}
+      run: |
+        payload=$(jq -cn \
+          --arg repo "$GITHUB_REPOSITORY" \
+          --arg event_type "submit-$SUBMISSION_DESTINATION" \
+          --arg delay "$SUBMISSION_DELAY" \
+          --arg platform "$SUBMISSION_PLATFORM" \
+          --arg branch "$SUBMISSION_BRANCH" \
+          --arg version "$SUBMISSION_VERSION" \
+          --arg build "$SUBMISSION_BUILD" \
+          '{repo: $repo, event_type: $event_type, delay: $delay, platform: $platform, branch: $branch, version: $version, build: $build}')
+        echo "payload=$payload" >> "$GITHUB_OUTPUT"
+      shell: bash -leo pipefail {0}
     - name: Trigger Submission Workflow
       uses: peter-evans/repository-dispatch@v4
       with:
         token: ${{ inputs.token }}
         repository: FelixLisczyk-Org/Workflow-Scheduler
         event-type: wait-and-callback
-        client-payload: '{"repo": "${{ github.repository }}", "event_type": "submit-${{ inputs.destination }}", "delay": "${{ inputs.delay }}", "platform": "${{ inputs.platform }}", "branch": "${{ inputs.branch }}"}'
+        client-payload: ${{ steps.payload.outputs.payload }}

@@ -19,9 +19,22 @@ inputs:
   skip_tests:
     description: "Skip Tests"
     required: true
+outputs:
+  version:
+    description: "Version number of the successfully uploaded app"
+    value: ${{ steps.upload-identity.outputs.version }}
+  build:
+    description: "Build number of the successfully uploaded app"
+    value: ${{ steps.upload-identity.outputs.build }}
 runs:
   using: "composite"
   steps:
+    - name: Prepare Uploaded Build Identity
+      run: |
+        identity_file="$RUNNER_TEMP/xcode-build-app-${GITHUB_RUN_ID}-${GITHUB_JOB}-${{ inputs.platform }}.txt"
+        rm -f "$identity_file"
+        echo "XCODE_BUILD_APP_IDENTITY_FILE=$identity_file" >> "$GITHUB_ENV"
+      shell: bash -leo pipefail {0}
     - name: Resolve Swift Package Dependencies
       if: ${{ inputs.update_deps == 'true' }}
       run: TUIST_USE_SWIFTERPM=0 tuist install --update --quiet && tuist install
@@ -80,3 +93,27 @@ runs:
       run: exit 1
       shell: bash -leo pipefail {0}
       if: ${{ steps.retry-build-app-2.outcome == 'failure' }}
+    - name: Publish Uploaded Build Identity
+      id: upload-identity
+      run: |
+        if [[ ! -f "$XCODE_BUILD_APP_IDENTITY_FILE" ]]; then
+          echo "Uploaded build identity file is missing." >&2
+          exit 1
+        fi
+
+        version=""
+        build=""
+        while IFS='=' read -r key value; do
+          case "$key" in
+            version) version="$value" ;;
+            build) build="$value" ;;
+          esac
+        done < "$XCODE_BUILD_APP_IDENTITY_FILE"
+
+        if [[ -z "$version" || -z "$build" ]]; then
+          echo "Uploaded build identity is incomplete." >&2
+          exit 1
+        fi
+
+        printf 'version=%s\nbuild=%s\n' "$version" "$build" >> "$GITHUB_OUTPUT"
+      shell: bash -leo pipefail {0}

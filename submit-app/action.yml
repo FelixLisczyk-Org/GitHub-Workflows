@@ -18,16 +18,35 @@ inputs:
   git_tag_suffix:
     description: "Suffix for git tag (e.g., Release)"
     required: false
+  version:
+    description: "App version to submit"
+    required: false
+    default: ""
+  build:
+    description: "Build number to submit"
+    required: false
+    default: ""
 runs:
   using: "composite"
   steps:
     - name: Submit Latest Build to App Store/TestFlight
+      env:
+        SUBMISSION_PLATFORM: ${{ inputs.platform }}
+        SUBMISSION_LANE: ${{ inputs.lane }}
+        SUBMISSION_VERSION: ${{ inputs.version }}
+        SUBMISSION_BUILD: ${{ inputs.build }}
       run: |
-        args=""
-        if [[ "${{ inputs.lane }}" == "submit_to_testflight" ]]; then
-          args="publish_external:false"
+        args=()
+        if [[ "$SUBMISSION_LANE" == "submit_to_testflight" ]]; then
+          args+=("publish_external:false")
         fi
-        bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} $args
+        if [[ -n "$SUBMISSION_VERSION" ]]; then
+          args+=("app_version:$SUBMISSION_VERSION")
+        fi
+        if [[ -n "$SUBMISSION_BUILD" ]]; then
+          args+=("build_number:$SUBMISSION_BUILD")
+        fi
+        bundle exec fastlane "$SUBMISSION_PLATFORM" "$SUBMISSION_LANE" "${args[@]}"
       shell: bash -leo pipefail {0}
     - name: Set Git Version Tag
       if: ${{ inputs.set_git_tag && inputs.git_tag_version_target != '' && inputs.git_tag_suffix != '' }}
