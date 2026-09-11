@@ -32,7 +32,7 @@ runs:
     - name: Prepare Uploaded Build Identity
       run: |
         identity_file="$RUNNER_TEMP/xcode-build-app-${GITHUB_RUN_ID}-${GITHUB_JOB}-${{ inputs.platform }}.txt"
-        rm -f "$identity_file"
+        /bin/rm -f "$identity_file"
         echo "XCODE_BUILD_APP_IDENTITY_FILE=$identity_file" >> "$GITHUB_ENV"
       shell: bash -leo pipefail {0}
     - name: Resolve Swift Package Dependencies
