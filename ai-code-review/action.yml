@@ -53,7 +53,7 @@ inputs:
     default: "openrouter"
   model:
     description: "Model identifier. For most providers: provider/model-id. For ollama: model-name:cloud (e.g. kimi-k2.6:cloud)"
-    default: "deepseek/deepseek-v4.1-flash:floor"
+    default: "openrouter/deepseek/deepseek-v4.1-flash:floor"
 
 runs:
   using: "composite"
