@@ -128,6 +128,9 @@ discovery_json() {
     force_cancel:queued)
       printf '%s\n' '[{"workflow_runs":[{"id":451,"status":"queued","pull_requests":[{"number":7}]}]}]'
       ;;
+    force_cancel_conflict:queued)
+      printf '%s\n' '[{"workflow_runs":[{"id":452,"status":"queued","pull_requests":[{"number":7}]}]}]'
+      ;;
     cancel_retry:in_progress)
       printf '%s\n' '[{"workflow_runs":[{"id":501,"status":"in_progress","pull_requests":[{"number":7}]}]}]'
       ;;
@@ -220,6 +223,9 @@ if [[ "${method}" == POST && "${endpoint}" == */force-cancel ]]; then
     force_cancel:451)
       respond 202
       ;;
+    force_cancel_conflict:452)
+      respond 409
+      ;;
     *)
       printf 'unexpected force-cancel request: %s\n' "${endpoint}" >&2
       exit 2
@@ -243,7 +249,7 @@ if [[ "${method}" == POST && "${endpoint}" == */cancel ]]; then
     race:401 | race:402)
       respond 409
       ;;
-    force_cancel:451)
+    force_cancel:451 | force_cancel_conflict:452)
       respond 409
       ;;
     race:403)
@@ -302,6 +308,9 @@ if [[ "${method}" == GET ]]; then
       ;;
     force_cancel:451)
       respond 200 '{"id":451,"status":"queued"}'
+      ;;
+    force_cancel_conflict:452)
+      respond 200 '{"id":452,"status":"queued"}'
       ;;
     *)
       respond 200 "{\"id\":${run_id:-0},\"status\":\"in_progress\"}"

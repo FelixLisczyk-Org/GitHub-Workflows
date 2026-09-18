@@ -413,6 +413,7 @@ recheck_conflicted_run() {
 
 force_cancel_run() {
   local attempt
+  local force_status
   local recheck_status
   local run_id=$1
 
@@ -425,12 +426,18 @@ force_cancel_run() {
     fi
 
     if [[ "${API_STATUS}" == "404" || "${API_STATUS}" == "409" ]]; then
+      force_status=${API_STATUS}
       printf 'Force cancellation of workflow run %s returned HTTP %s; rechecking its status.\n' \
-        "${run_id}" "${API_STATUS}"
+        "${run_id}" "${force_status}"
       if recheck_conflicted_run "${run_id}"; then
         return 0
       else
         recheck_status=$?
+      fi
+
+      if (( recheck_status == 2 )) && [[ "${force_status}" == "409" ]]; then
+        log_warning "Run ${run_id} remains '${RECHECKED_RUN_STATUS}' because GitHub rejected force cancellation with HTTP 409; continuing cleanup."
+        return 0
       fi
 
       if (( recheck_status == 2 )); then

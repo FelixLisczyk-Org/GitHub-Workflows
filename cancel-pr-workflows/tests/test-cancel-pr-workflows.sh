@@ -355,6 +355,18 @@ test_409_active_run_uses_force_cancel() {
   assert_exact_call_count 1 'api --method POST --include /repos/example/project/actions/runs/451/force-cancel' || return 1
 }
 
+test_force_cancel_409_for_orphaned_run_is_nonfatal() {
+  run_script force_cancel_conflict
+
+  assert_status 0 || return 1
+  assert_contains "Run 452 still has status 'queued' after a cancellation race; attempting force cancellation." || return 1
+  assert_contains 'Force cancellation of workflow run 452 returned HTTP 409; rechecking its status.' || return 1
+  assert_contains "Run 452 remains 'queued' because GitHub rejected force cancellation with HTTP 409; continuing cleanup." || return 1
+  assert_exact_call_count 1 'api --method POST --include /repos/example/project/actions/runs/452/cancel' || return 1
+  assert_exact_call_count 2 'api --method GET --include /repos/example/project/actions/runs/452' || return 1
+  assert_exact_call_count 1 'api --method POST --include /repos/example/project/actions/runs/452/force-cancel' || return 1
+}
+
 test_429_and_server_failures_retry_then_succeed() {
   run_script cancel_retry
 
@@ -480,6 +492,7 @@ main() {
     test_no_match_and_repeat_are_idempotent
     test_409_and_404_cancellation_races_recheck_state
     test_409_active_run_uses_force_cancel
+    test_force_cancel_409_for_orphaned_run_is_nonfatal
     test_429_and_server_failures_retry_then_succeed
     test_rate_limited_403_honors_large_retry_after
     test_rate_limit_headers_wait_until_reset
