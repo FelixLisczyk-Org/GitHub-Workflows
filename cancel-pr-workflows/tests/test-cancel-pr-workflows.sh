@@ -343,6 +343,18 @@ test_409_and_404_cancellation_races_recheck_state() {
   done
 }
 
+test_409_active_run_uses_force_cancel() {
+  run_script force_cancel
+
+  assert_status 0 || return 1
+  assert_contains 'Cancellation of workflow run 451 returned HTTP 409; rechecking its status.' || return 1
+  assert_contains "Run 451 still has status 'queued' after a cancellation race; attempting force cancellation." || return 1
+  assert_contains 'Force cancellation accepted for workflow run 451 (HTTP 202).' || return 1
+  assert_exact_call_count 1 'api --method POST --include /repos/example/project/actions/runs/451/cancel' || return 1
+  assert_exact_call_count 1 'api --method GET --include /repos/example/project/actions/runs/451' || return 1
+  assert_exact_call_count 1 'api --method POST --include /repos/example/project/actions/runs/451/force-cancel' || return 1
+}
+
 test_429_and_server_failures_retry_then_succeed() {
   run_script cancel_retry
 
@@ -467,6 +479,7 @@ main() {
     test_sibling_cleanup_runs_are_cancelled_without_a_workflow_ref
     test_no_match_and_repeat_are_idempotent
     test_409_and_404_cancellation_races_recheck_state
+    test_409_active_run_uses_force_cancel
     test_429_and_server_failures_retry_then_succeed
     test_rate_limited_403_honors_large_retry_after
     test_rate_limit_headers_wait_until_reset

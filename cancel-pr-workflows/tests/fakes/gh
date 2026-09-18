@@ -125,6 +125,9 @@ discovery_json() {
     race:in_progress)
       printf '%s\n' '[{"workflow_runs":[{"id":401,"status":"in_progress","pull_requests":[{"number":7}]},{"id":403,"status":"in_progress","pull_requests":[{"number":7}]}]}]'
       ;;
+    force_cancel:queued)
+      printf '%s\n' '[{"workflow_runs":[{"id":451,"status":"queued","pull_requests":[{"number":7}]}]}]'
+      ;;
     cancel_retry:in_progress)
       printf '%s\n' '[{"workflow_runs":[{"id":501,"status":"in_progress","pull_requests":[{"number":7}]}]}]'
       ;;
@@ -208,8 +211,21 @@ if [[ "${endpoint}" == *'/actions/runs?per_page=100' ]]; then
 fi
 
 run_id=""
-if [[ "${endpoint}" =~ /actions/runs/([0-9]+)(/cancel)?$ ]]; then
+if [[ "${endpoint}" =~ /actions/runs/([0-9]+)(/(cancel|force-cancel))?$ ]]; then
   run_id=${BASH_REMATCH[1]}
+fi
+
+if [[ "${method}" == POST && "${endpoint}" == */force-cancel ]]; then
+  case "${FAKE_GH_SCENARIO}:${run_id}" in
+    force_cancel:451)
+      respond 202
+      ;;
+    *)
+      printf 'unexpected force-cancel request: %s\n' "${endpoint}" >&2
+      exit 2
+      ;;
+  esac
+  exit 0
 fi
 
 if [[ "${method}" == POST && "${endpoint}" == */cancel ]]; then
@@ -225,6 +241,9 @@ if [[ "${method}" == POST && "${endpoint}" == */cancel ]]; then
       respond 202
       ;;
     race:401 | race:402)
+      respond 409
+      ;;
+    force_cancel:451)
       respond 409
       ;;
     race:403)
@@ -280,6 +299,9 @@ if [[ "${method}" == GET ]]; then
       ;;
     race:402 | race:403)
       respond 404
+      ;;
+    force_cancel:451)
+      respond 200 '{"id":451,"status":"queued"}'
       ;;
     *)
       respond 200 "{\"id\":${run_id:-0},\"status\":\"in_progress\"}"

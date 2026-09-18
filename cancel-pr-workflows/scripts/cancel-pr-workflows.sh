@@ -16,6 +16,7 @@ DISCOVERY_RUN_TOTAL=0
 DISCOVERY_STATUS_TOTAL=0
 PR_HEAD_REF_MATCH=""
 PR_HEAD_REPO_MATCH=""
+RECHECKED_RUN_STATUS=""
 RUN_IDS=()
 SELF_WORKFLOW_PATH=""
 
@@ -363,6 +364,8 @@ recheck_conflicted_run() {
   local run_id=$1
   local status
 
+  RECHECKED_RUN_STATUS=""
+
   for ((attempt = 1; attempt <= MAX_ATTEMPTS; attempt++)); do
     request_api --method GET --include "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}"
 
@@ -382,8 +385,8 @@ recheck_conflicted_run() {
         return 0
       fi
 
-      log_error "Run ${run_id} still has status '${status}' after a cancellation race."
-      return 1
+      RECHECKED_RUN_STATUS=${status}
+      return 2
     fi
 
     if is_transient_failure; then
@@ -408,8 +411,60 @@ recheck_conflicted_run() {
   done
 }
 
+force_cancel_run() {
+  local attempt
+  local recheck_status
+  local run_id=$1
+
+  for ((attempt = 1; attempt <= MAX_ATTEMPTS; attempt++)); do
+    request_api --method POST --include "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/force-cancel"
+
+    if (( API_EXIT == 0 )) && [[ "${API_STATUS}" == "202" || "${API_STATUS}" == "204" ]]; then
+      printf 'Force cancellation accepted for workflow run %s (HTTP %s).\n' "${run_id}" "${API_STATUS}"
+      return 0
+    fi
+
+    if [[ "${API_STATUS}" == "404" || "${API_STATUS}" == "409" ]]; then
+      printf 'Force cancellation of workflow run %s returned HTTP %s; rechecking its status.\n' \
+        "${run_id}" "${API_STATUS}"
+      if recheck_conflicted_run "${run_id}"; then
+        return 0
+      else
+        recheck_status=$?
+      fi
+
+      if (( recheck_status == 2 )); then
+        log_error "Run ${run_id} still has status '${RECHECKED_RUN_STATUS}' after force cancellation."
+      fi
+      return 1
+    fi
+
+    if is_transient_failure; then
+      if (( attempt < MAX_ATTEMPTS )); then
+        printf 'Force cancellation of run %s failed transiently (attempt %d/%d, HTTP %s). Retrying.\n' \
+          "${run_id}" "${attempt}" "${MAX_ATTEMPTS}" "${API_STATUS:-transport error}" >&2
+        sleep_before_retry "${attempt}"
+        continue
+      fi
+
+      log_error "Failed to force-cancel workflow run ${run_id} after ${attempt} attempts (HTTP ${API_STATUS:-transport error})."
+      return 1
+    fi
+
+    if [[ "${API_STATUS}" == "401" || "${API_STATUS}" == "403" ]]; then
+      log_error "Authorization failed while force-cancelling run ${run_id} (HTTP ${API_STATUS})."
+      return 1
+    fi
+
+    log_error "Failed to force-cancel workflow run ${run_id} after ${attempt} attempt(s) (HTTP ${API_STATUS:-transport error})."
+    return 1
+  done
+}
+
 cancel_run() {
   local attempt
+  local cancellation_status
+  local recheck_status
   local run_id=$1
 
   for ((attempt = 1; attempt <= MAX_ATTEMPTS; attempt++)); do
@@ -421,10 +476,28 @@ cancel_run() {
     fi
 
     if [[ "${API_STATUS}" == "404" || "${API_STATUS}" == "409" ]]; then
+      cancellation_status=${API_STATUS}
       printf 'Cancellation of workflow run %s returned HTTP %s; rechecking its status.\n' \
-        "${run_id}" "${API_STATUS}"
-      recheck_conflicted_run "${run_id}"
-      return $?
+        "${run_id}" "${cancellation_status}"
+      if recheck_conflicted_run "${run_id}"; then
+        return 0
+      else
+        recheck_status=$?
+      fi
+
+      if (( recheck_status != 2 )); then
+        return 1
+      fi
+
+      if [[ "${cancellation_status}" == "409" ]]; then
+        printf "Run %s still has status '%s' after a cancellation race; attempting force cancellation.\n" \
+          "${run_id}" "${RECHECKED_RUN_STATUS}"
+        force_cancel_run "${run_id}"
+        return $?
+      fi
+
+      log_error "Run ${run_id} still has status '${RECHECKED_RUN_STATUS}' after a cancellation race."
+      return 1
     fi
 
     if is_transient_failure; then
