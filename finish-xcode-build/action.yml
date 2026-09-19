@@ -17,21 +17,6 @@ runs:
         name: workspace
         path: workspace.zip
       if: job.status == 'failure' && contains(runner.workspace, '/Users/runner/')
-    - name: Revert Git SSH Redirect
-      run: |
-        if git config --global --get url."git@github.com:".insteadOf >/dev/null 2>&1; then
-          echo "Removing git SSH redirect config..."
-          git config --global --unset url."git@github.com:".insteadOf "https://github.com/"
-        else
-          echo "Git SSH redirect config not found (already removed)"
-        fi
-      shell: bash -leo pipefail {0}
-      if: always()
-    - name: Remove [safe] section from gitconfig
-      run: |
-        git config --global --remove-section safe || echo "[safe] section not found"
-      shell: bash -leo pipefail {0}
-      if: always()
     - name: (Local) Mark Tuist Dependency State Valid
       run: |
         cache_directory="Tuist/.build"

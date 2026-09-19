@@ -73,7 +73,7 @@ runs:
         ssh-private-key: ${{ inputs.ssh_private_key }}
       if: contains(runner.workspace, '/Users/runner/') && inputs.ssh_private_key != ''
     - name: Clone Swift Packages over SSH
-      run: git config --global url."git@github.com:".insteadOf "https://github.com/"
+      run: "${{ github.action_path }}/scripts/isolate-git-config.sh"
       shell: bash -leo pipefail {0}
       # This step is required for the cache actions to find the `zstd` executable in the Homebrew directory.
     - name: (Local) Add PATH to GITHUB_PATH
