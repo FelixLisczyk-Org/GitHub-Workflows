@@ -228,6 +228,66 @@ def test_priority_is_global():
     )
 
 
+def test_frameless_runner_crash_retries():
+    """A bare `Crash: xctest` is a runner death, not an attributable test failure.
+
+    xcodebuild reports the process death against whichever test the crashed worker had
+    next queued, so the named test is frequently one that passes everywhere else. Without
+    this classification the build aborts on a failure a rerun recovers from.
+    """
+    for text in ["Crash: xctest", "crash: xctest", "Crash: xctest\n", "  Crash: xctest  "]:
+        _, handler = cbe.find_handler(text)
+        check(handler is cbe.handle_regular_error, f"frameless runner crash {text!r} is retryable")
+
+    # The frame is real evidence about a specific test, so it must keep failing the build.
+    framed = "Crash: xctest at specialized static Runner._applyScopingTraits(for:testCase:_:)"
+    _, handler = cbe.find_handler(framed)
+    check(handler is None, "a runner crash naming a frame is still treated as genuine")
+
+    # A crash of some other process is a different signal and must not be swept in.
+    _, handler = cbe.find_handler("Crash: SnipNotesApp")
+    check(handler is None, "a non-xctest crash is not classified as retryable")
+
+
+def test_frameless_runner_crash_survives_prefixes():
+    """The anchored pattern must still match the message as the xcresult records it."""
+    for prefix in ["", "Message: ", "Failure: "]:
+        _, handler = cbe.find_handler(f"{prefix}Crash: xctest")
+        check(
+            handler is cbe.handle_regular_error,
+            f"frameless runner crash with {prefix!r} prefix is retryable",
+        )
+
+
+def test_frameless_runner_crash_is_not_genuine():
+    """The genuine-failure gate must let the frameless crash through to its handler."""
+    failures = [
+        {
+            "path": ["PersistenceCoreTests", "MarkdownUserDefaultsPersistenceStrategyTests",
+                     "Update non-existent note throws error"],
+            "message": "Crash: xctest",
+            "device": "My Mac",
+        }
+    ]
+    check(
+        cbe.find_genuine_test_failures(failures) == [],
+        "a frameless runner crash is not counted as a genuine test failure",
+    )
+
+    framed = [
+        {
+            "path": ["LegacyMigrationCoreTests", "LegacyClipboardPreferenceConverterTests",
+                     "a fully malformed top-level payload is reported as an invalid value rather than crashing"],
+            "message": "Crash: xctest at specialized static Runner._applyScopingTraits(for:testCase:_:)",
+            "device": "My Mac",
+        }
+    ]
+    check(
+        len(cbe.find_genuine_test_failures(framed)) == 1,
+        "a runner crash naming a frame is still counted as a genuine test failure",
+    )
+
+
 def make_log_dir(entries):
     """Create a temp `log` directory; entries is a list of (name, contents, age_seconds)."""
     root = tempfile.mkdtemp()
@@ -442,6 +502,9 @@ test_unrelated_patterns_still_match()
 test_recovery_regenerates_without_warming_binary_cache()
 test_failed_regeneration_refuses_retry()
 test_priority_is_global()
+test_frameless_runner_crash_retries()
+test_frameless_runner_crash_survives_prefixes()
+test_frameless_runner_crash_is_not_genuine()
 test_scoping_ignores_earlier_invocations()
 test_scoping_keeps_current_invocation()
 test_genuine_test_failure_suppresses_retry()

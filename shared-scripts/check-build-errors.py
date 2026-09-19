@@ -72,6 +72,26 @@ simulator_errors = [
 
 clear_tuist_cache_errors = ["Underlying Error: Crash", "Failed to load the test bundle"]
 
+# A bare `Crash: xctest` is a test-runner process death, not an assertion: the worker died
+# instead of failing, so the message carries no stack frame and no test frame at all.
+# xcodebuild then attributes the death to whichever test that worker had next queued, which
+# is why the named test is routinely one that passes on every other platform and rerun.
+# Treating that as a genuine failure aborts a build a retry would have recovered, so it is
+# classified as infrastructure and allowed to retry.
+#
+# The frame is what makes the difference. `Crash: xctest at <frame>` names where the runner
+# died, which is real evidence about a specific test, so only the frameless form is exempted
+# here (see `crash_without_frame`).
+crash_without_frame = re.compile(r"crash:\s*xctest\s*$", re.IGNORECASE)
+
+retry_errors = [
+    crash_without_frame,
+    "The Xcode build system has crashed",
+    "Command CodeSign failed with a nonzero exit code",
+    "Segmentation fault",
+    "error: stat",
+]
+
 recreate_simulators_errors = [
     "Unable to boot device because it cannot be located on disk",
     "The test runner hung before establishing connection",
@@ -82,13 +102,6 @@ recreate_simulators_errors = [
     # runner" message and trigger only the lighter reset.
     "Failed to create app extension placeholder",
     "Placeholder did not exist",
-]
-
-retry_errors = [
-    "The Xcode build system has crashed",
-    "Command CodeSign failed with a nonzero exit code",
-    "Segmentation fault",
-    "error: stat",
 ]
 
 
