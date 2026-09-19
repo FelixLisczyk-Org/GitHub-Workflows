@@ -37,6 +37,33 @@ if offending=$(grep -l -e 'git config --global' -e 'git config --system' "${acti
 fi
 printf 'ok - no action writes machine-global git configuration\n'
 
+# Grepping this repository's own metadata cannot see a mutation performed by an
+# external action, which is where the remaining one lives: `actions/checkout`
+# adds the workspace to `safe.directory` unless told not to. It does so through a
+# temporary HOME under `$RUNNER_TEMP`, so it is not a cross-job write, but it
+# copies `~/.gitconfig` into that temp home on the way - and a future checkout
+# version is free to change that. Asserting the input is what keeps the write out
+# of the real user config regardless of how checkout implements it.
+ruby -ryaml -e '
+  path = File.join(ARGV[0], "prepare-xcode-build", "action.yml")
+  steps = YAML.load_file(path)["runs"]["steps"]
+  checkouts = steps.select { |step| step["uses"].to_s.start_with?("actions/checkout@") }
+
+  if checkouts.empty?
+    warn "not ok - prepare-xcode-build no longer checks out through actions/checkout"
+    exit 1
+  end
+
+  checkouts.each do |step|
+    if step.dig("with", "set-safe-directory").to_s != "false"
+      warn "not ok - #{step["uses"]} does not disable its global safe.directory write"
+      exit 1
+    end
+  end
+
+  puts "ok - every actions/checkout step disables its global safe.directory write"
+' "${REPO_ROOT}" || exit 1
+
 # The cleanup steps only existed to undo the global mutation. Leaving either one
 # behind would keep the cross-job interference they were written to cause: an
 # unconditional `--remove-section safe` deletes another job's entries, and an

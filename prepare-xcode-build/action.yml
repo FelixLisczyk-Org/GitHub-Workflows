@@ -28,6 +28,13 @@ runs:
         # dependency state in Tuist/.build. This is separate from Tuist's global
         # binary module cache. Cloud workspaces are ephemeral and use normal cleaning.
         clean: ${{ contains(runner.workspace, '/Users/runner/') }}
+        # Checkout would otherwise add the workspace to `safe.directory`. It does
+        # that in a temporary HOME under $RUNNER_TEMP rather than in the real
+        # ~/.gitconfig, so it is not a cross-job write, but it still copies
+        # ~/.gitconfig into that temp home first (PL-378). The runner and the
+        # agent share one user account on the Studio, so the ownership exception
+        # `safe.directory` exists for cannot arise, and skipping it avoids the copy.
+        set-safe-directory: false
     - name: (Local) Clean Workspace, Preserving Tuist Dependency State
       run: |
         # checkout's broad clean would remove project-local dependency state on persistent runners.
