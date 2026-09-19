@@ -2,8 +2,8 @@ name: Finish Xcode Build
 description: Finish Xcode Build
 inputs:
   runner_root_password:
-    description: "Root password for sudo operations"
-    required: true
+    description: "Deprecated and ignored. Xcode is selected per job through DEVELOPER_DIR, so nothing machine-wide needs restoring. Callers can stop passing it at any time."
+    required: false
 runs:
   using: "composite"
   steps:
@@ -26,12 +26,6 @@ runs:
           echo "Git SSH redirect config not found (already removed)"
         fi
       shell: bash -leo pipefail {0}
-      if: always()
-    - name: (Local) Restore Xcode Version
-      uses: FelixLisczyk-Org/GitHub-Workflows/xcode-restore-version@main
-      with:
-        original_xcode_path: ${{ env.ORIGINAL_XCODE_PATH }}
-        runner_root_password: ${{ inputs.runner_root_password }}
       if: always()
     - name: Remove [safe] section from gitconfig
       run: |

@@ -1,0 +1,16 @@
+name: Select Xcode Version
+description: Select the Xcode version for this job and export it as DEVELOPER_DIR
+inputs:
+  use_beta_xcode:
+    description: "Whether to use Beta Xcode version (defaults to false for stable Xcode)"
+    required: false
+    default: 'false'
+runs:
+  using: "composite"
+  steps:
+    - name: (Local) Select Xcode Version
+      run: "${{ github.action_path }}/scripts/select-xcode.sh"
+      shell: bash -leo pipefail {0}
+      env:
+        USE_BETA_XCODE: ${{ inputs.use_beta_xcode }}
+      if: contains(runner.workspace, '/Users/runner/') == false

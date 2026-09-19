@@ -8,6 +8,12 @@ This repository contains reusable workflows and composite actions for other repo
 * Run bash scripts with a login shell to load `.bash_profile`: `shell: bash -leo pipefail {0}`
 * A login shell also loads the user profile, which redefines `rm` as a wrapper around `trash`. Unlike `rm -rf`, `trash` fails on a path that does not exist, and it fills the runner's Trash with regenerable build artifacts. Use `command rm` in composite actions to bypass the wrapper.
 
+# Xcode selection
+
+`select-xcode` picks the newest stable Xcode (the newest beta on `beta`) and exports it as `DEVELOPER_DIR` into `$GITHUB_ENV`. It deliberately does **not** run `xcode-select -s`, which changes the developer directory **machine-wide**: with a stable Xcode and several betas installed, two jobs on the same Mac each select their own and silently swap the toolchain under each other mid-build, and a finishing job restores the directory captured at *its own* start, stomping a job that is still running.
+
+`DEVELOPER_DIR` is inherited by the job's process tree — `xcodebuild`, `xcrun` and fastlane all honour it — and disappears with the job. That is why there is no restore step and no `runner_root_password`. Note that a `$GITHUB_ENV` write does not affect the shell that made it, so the selection step passes the value to `xcodebuild -version` explicitly to verify it.
+
 # Build log scoping
 
 Every platform step in a job shares one `log` directory, and nothing clears it between steps — `prepare-xcode-build` only wipes it once per job. Fastlane's `scan` writes `log/<Product>-<Scheme>.log` and `log/<Scheme>.xcresult` per invocation, so by the time a later step fails, the directory also holds the logs of the earlier steps that passed.

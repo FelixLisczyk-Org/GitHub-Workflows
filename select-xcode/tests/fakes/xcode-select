@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Stand-in for `xcode-select` that records every invocation.
+#
+# `xcode-select -s` switches the developer directory for the whole machine, which
+# is the behaviour PL-374 removes. Reaching this fake at all is the failure: the
+# harness asserts the log stays empty.
+set -uo pipefail
+
+: "${FAKE_XCODE_STATE_DIR:?FAKE_XCODE_STATE_DIR is required}"
+
+mkdir -p "${FAKE_XCODE_STATE_DIR}"
+printf 'xcode-select %s\n' "$*" >>"${FAKE_XCODE_STATE_DIR}/xcode-select.log"
+
+printf '%s\n' "${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"

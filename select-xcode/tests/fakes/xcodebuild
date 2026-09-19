@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Stand-in for `xcodebuild` that records the DEVELOPER_DIR it ran under.
+#
+# The script under test verifies its selection with an in-step `xcodebuild
+# -version`, because appending to `$GITHUB_ENV` does not affect the shell that
+# did the appending. Recording the value is how the harness proves that
+# verification really ran against the selected Xcode.
+set -uo pipefail
+
+: "${FAKE_XCODE_STATE_DIR:?FAKE_XCODE_STATE_DIR is required}"
+
+mkdir -p "${FAKE_XCODE_STATE_DIR}"
+printf '%s\n' "${DEVELOPER_DIR-}" >>"${FAKE_XCODE_STATE_DIR}/xcodebuild.log"
+
+printf 'Xcode 27.0\nBuild version 27A1\n'
