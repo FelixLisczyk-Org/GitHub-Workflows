@@ -107,6 +107,10 @@ case "${output}" in
 esac
 printf 'ok - foreign checkouts are skipped with a diagnostic\n'
 
+# The workspace-scoped run above already deleted the attributable directory, so
+# recreate it before the fallback run: only then does its absence afterwards prove
+# that the fallback invocation performed the deletion.
+plist_with "${FIXTURE_BASE}/${DERIVED_DATA_BASE_NAME}-aaaa1111" "${TMP}/workspace/${PROJECT}.xcodeproj"
 output=$(run_in_workspace without-github-workspace) || fail "the script failed without GITHUB_WORKSPACE"
 [[ ! -e "${FIXTURE_BASE}/${DERIVED_DATA_BASE_NAME}-aaaa1111" ]] ||
   fail "local fallback cleanup did not delete the current checkout's DerivedData"

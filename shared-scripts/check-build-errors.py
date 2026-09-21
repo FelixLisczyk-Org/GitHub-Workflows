@@ -223,9 +223,12 @@ def erase_ci_device(udid):
 def recreate_ci_device(udid):
     """Delete and recreate the single CI-owned simulator `udid`.
 
-    Returns the recreated device's new UDID, or None when the recreation failed. The
-    new UDID differs from `udid` by construction, so the caller must retarget the
-    destination before the retry runs against the old, deleted device.
+    Returns the recreated device's new UDID on success. Returns False when the device
+    was deleted but could not be recreated - the caller must then refuse the retry,
+    since the destination no longer names an existing device. Returns None when the
+    device was left untouched and a plain retry remains reasonable. The new UDID
+    differs from `udid` by construction, so the caller must retarget the destination
+    before the retry runs.
     """
     device = recoverable_ci_device(udid)
     if device is None:
@@ -240,11 +243,12 @@ def recreate_ci_device(udid):
     if run_simctl("shutdown", udid) != 0:
         print("Continuing with deletion despite the shutdown failure")
     if run_simctl("delete", udid) != 0:
+        print(f"Could not delete simulator {udid}; leaving it in place")
         return None
     status, output = run_simctl_with_output("create", name, device_type, runtime)
     if status != 0:
-        print(f"Could not recreate simulator {name!r}")
-        return None
+        print(f"Deleted simulator {udid} but could not recreate {name!r}")
+        return False
     created_udid = output.strip()
     print(f"Recreated simulator {name!r} as {created_udid}")
     return created_udid
@@ -274,7 +278,7 @@ def set_destination_udid(udid):
     env_file_path = os.getenv("GITHUB_ENV")
     if env_file_path:
         with open(env_file_path, "a", encoding="utf-8") as f:
-            f.write(f"IOS_SIMULATOR_DESTINATION={updated}")
+            f.write(f"IOS_SIMULATOR_DESTINATION={updated}\n")
     print(f"Retargeted IOS_SIMULATOR_DESTINATION at the recreated simulator: {updated}")
 
 
@@ -372,6 +376,14 @@ def handle_recreate_simulators_error(err):
             # `simctl create` mints a new UDID, so the retry must target the recreated
             # device rather than the one just deleted.
             set_destination_udid(recreated_udid)
+        elif recreated_udid is False:
+            # The device was deleted but not recreated, so the destination names
+            # nothing that exists; a retry would only repeat the failure.
+            print(
+                f"CI simulator {udid} was deleted but could not be recreated; "
+                "refusing to retry because the destination no longer exists."
+            )
+            return
         else:
             print(
                 f"Could not recover CI simulator {udid} within device-scoped operations; "
@@ -579,7 +591,9 @@ def set_retry_build():
     env_file_path = os.getenv("GITHUB_ENV")
     if env_file_path:
         with open(env_file_path, "a", encoding="utf-8") as f:
-            f.write("RETRY_BUILD=true")
+            # The trailing newline is required: GitHub parses the file line by line, and
+            # an unterminated line would concatenate with whatever is appended next.
+            f.write("RETRY_BUILD=true\n")
     sys.exit(0)
 
 

@@ -296,6 +296,10 @@ def simulator_outcome(handler, destination=DESTINATION, devices=None, failing_si
         nonlocal retried, env_at_retry
         retried = True
         env_at_retry = os.environ.get("IOS_SIMULATOR_DESTINATION")
+        if github_env is not None:
+            # With a $GITHUB_ENV fixture the real writer must run so the test asserts
+            # the exact bytes both it and the destination retargeting append.
+            original_set_retry()
 
     cbe.subprocess.run = fake_run
     cbe.set_retry_build = fake_set_retry_build
@@ -401,10 +405,22 @@ def test_recreate_recovery_retargets_the_destination():
     with open(github_env, encoding="utf-8") as handle:
         written = handle.read()
     check(
-        written == f"IOS_SIMULATOR_DESTINATION={retargeted}",
-        "$GITHUB_ENV receives the retargeted destination for the later steps",
+        written == f"IOS_SIMULATOR_DESTINATION={retargeted}\nRETRY_BUILD=true\n",
+        "$GITHUB_ENV receives the retargeted destination and the retry flag as two lines",
     )
     check(retried is True, "recreation with retargeting still schedules the retry")
+
+
+def test_failed_recreate_refuses_retry():
+    """A device deleted but not recreated leaves no destination to retry against."""
+    _commands, retried, _env = simulator_outcome(
+        cbe.handle_recreate_simulators_error,
+        failing_simctl=("erase", "create"),
+    )
+    check(
+        retried is False,
+        "a delete-without-recreate does not schedule a retry against the missing device",
+    )
 
 
 def test_no_machine_global_recovery_commands():
@@ -723,6 +739,7 @@ test_simulator_recovery_refuses_ticket_devices()
 test_simulator_recovery_without_udid_is_plain_retry()
 test_recreate_recovery_escalates_to_device_recreate()
 test_recreate_recovery_retargets_the_destination()
+test_failed_recreate_refuses_retry()
 test_no_machine_global_recovery_commands()
 test_priority_is_global()
 test_frameless_runner_crash_retries()
