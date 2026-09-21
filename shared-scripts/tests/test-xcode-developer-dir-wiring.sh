@@ -41,25 +41,22 @@ if offending=$(grep -l -e 'xcode-select-version' -e 'xcode-restore-version' -e '
 fi
 printf 'ok - nothing references the retired Xcode actions\n'
 
-# The input survives only so that callers passing it keep working; consuming it
-# again would mean the root password found a new use.
-if offending=$(grep -l -e 'inputs.runner_root_password' "${action_files[@]}"); then
+# PL-461 removed the compatibility input entirely; any reappearance of the root
+# password plumbing means it found a new use again.
+if offending=$(grep -l -e 'runner_root_password' -e 'RUNNER_ROOT_PWD' "${action_files[@]}"); then
   printf '%s\n' "${offending}" >&2
-  fail "an action still consumes runner_root_password"
+  fail "an action still declares or consumes runner_root_password"
 fi
-printf 'ok - runner_root_password is accepted but never consumed\n'
+printf 'ok - runner_root_password is gone entirely\n'
 
 ruby -ryaml -e '
   %w[prepare-xcode-build finish-xcode-build].each do |action|
     inputs = YAML.load_file(File.join(ARGV[0], action, "action.yml"))["inputs"] || {}
     next unless inputs.key?("runner_root_password")
-
-    if inputs["runner_root_password"]["required"]
-      warn "not ok - #{action}: runner_root_password is still required, so callers cannot drop it"
-      exit 1
-    end
+    puts "not ok - #{action}: runner_root_password is declared again"
+    exit 1
   end
-  puts "ok - runner_root_password is optional wherever it is still declared"
+  puts "ok - no action declares runner_root_password"
 ' "${REPO_ROOT}" || exit 1
 
 grep -Fq 'GitHub-Workflows/select-xcode@' "${REPO_ROOT}/prepare-xcode-build/action.yml" ||

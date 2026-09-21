@@ -13,9 +13,6 @@ inputs:
     description: "Distribution Certificate Password (required for release builds)"
   ssh_private_key:
     description: "Private SSH Key (required for cloud runner)"
-  runner_root_password:
-    description: "Deprecated and ignored. Xcode is selected per job through DEVELOPER_DIR, so no root password is needed. Callers can stop passing it at any time."
-    required: false
 runs:
   using: "composite"
   steps:

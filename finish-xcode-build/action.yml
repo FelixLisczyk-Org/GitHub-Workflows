@@ -1,9 +1,5 @@
 name: Finish Xcode Build
 description: Finish Xcode Build
-inputs:
-  runner_root_password:
-    description: "Deprecated and ignored. Xcode is selected per job through DEVELOPER_DIR, so nothing machine-wide needs restoring. Callers can stop passing it at any time."
-    required: false
 runs:
   using: "composite"
   steps:

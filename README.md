@@ -12,7 +12,7 @@ This repository contains reusable workflows and composite actions for other repo
 
 `select-xcode` picks the newest stable Xcode (the newest beta on `beta`) and exports it as `DEVELOPER_DIR` into `$GITHUB_ENV`. It deliberately does **not** run `xcode-select -s`, which changes the developer directory **machine-wide**: with a stable Xcode and several betas installed, two jobs on the same Mac each select their own and silently swap the toolchain under each other mid-build, and a finishing job restores the directory captured at *its own* start, stomping a job that is still running.
 
-`DEVELOPER_DIR` is inherited by the job's process tree — `xcodebuild`, `xcrun` and fastlane all honour it — and disappears with the job. That is why there is no restore step and no `runner_root_password`. Note that a `$GITHUB_ENV` write does not affect the shell that made it, so the selection step passes the value to `xcodebuild -version` explicitly to verify it.
+`DEVELOPER_DIR` is inherited by the job's process tree — `xcodebuild`, `xcrun` and fastlane all honour it — and disappears with the job. That is why there is no restore step and no root password. Note that a `$GITHUB_ENV` write does not affect the shell that made it, so the selection step passes the value to `xcodebuild -version` explicitly to verify it.
 
 # Build log scoping
 
