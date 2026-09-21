@@ -66,6 +66,11 @@ def main() -> int:
             udid = device.get("udid", "")
             if not name or not udid:
                 continue
+            if name.startswith("Ticket "):
+                # PL-376: `Ticket <ID> - ...` simulators are owned by agent work and
+                # may hold installed app state, so CI must never select one even as a
+                # fallback when no regular simulator matches.
+                continue
             if name == preferred_name:
                 preference_rank = 0
             elif name.startswith("iPhone"):

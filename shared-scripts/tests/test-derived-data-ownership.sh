@@ -74,11 +74,17 @@ plist_with "${FIXTURE_BASE}/${DERIVED_DATA_BASE_NAME}-dddd4444" "${TMP}/vanished
 
 run_in_workspace() {
   local workspace="${TMP}/workspace"
-  if [[ -n "${1:-}" ]]; then
-    (cd "${workspace}" && GITHUB_WORKSPACE="${workspace}" "${SCRIPT}")
-  else
-    (cd "${workspace}" && env -u GITHUB_WORKSPACE "${SCRIPT}")
-  fi
+  case "${1:-}" in
+    with-github-workspace)
+      (cd "${workspace}" && GITHUB_WORKSPACE="${workspace}" "${SCRIPT}")
+      ;;
+    with-broken-workspace)
+      (cd "${workspace}" && GITHUB_WORKSPACE="${TMP}/does-not-exist" "${SCRIPT}")
+      ;;
+    *)
+      (cd "${workspace}" && env -u GITHUB_WORKSPACE "${SCRIPT}")
+      ;;
+  esac
 }
 
 output=$(run_in_workspace with-github-workspace) || fail "the script failed under GITHUB_WORKSPACE"
@@ -105,6 +111,17 @@ output=$(run_in_workspace without-github-workspace) || fail "the script failed w
 [[ ! -e "${FIXTURE_BASE}/${DERIVED_DATA_BASE_NAME}-aaaa1111" ]] ||
   fail "local fallback cleanup did not delete the current checkout's DerivedData"
 printf 'ok - without GITHUB_WORKSPACE the current directory is the ownership boundary\n'
+
+# An unresolvable boundary must fail closed: the first run deleted the attributable
+# directory, so recreate it and prove that a broken GITHUB_WORKSPACE deletes nothing
+# (an empty boundary would otherwise match every absolute path).
+plist_with "${FIXTURE_BASE}/${DERIVED_DATA_BASE_NAME}-aaaa1111" "${TMP}/workspace/${PROJECT}.xcodeproj"
+if run_in_workspace with-broken-workspace; then
+  fail "the script exited 0 although the GITHUB_WORKSPACE path does not exist"
+fi
+[[ -e "${FIXTURE_BASE}/${DERIVED_DATA_BASE_NAME}-aaaa1111" ]] ||
+  fail "cleanup ran although the ownership boundary could not be resolved"
+printf 'ok - an unresolvable boundary fails closed and deletes nothing\n'
 
 rm -rf "${FIXTURE_BASE}/${DERIVED_DATA_BASE_NAME}-aaaa1111" \
        "${FIXTURE_BASE}/${DERIVED_DATA_BASE_NAME}-bbbb2222" \

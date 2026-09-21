@@ -11,6 +11,7 @@ Run directly: `python3 shared-scripts/tests/test-check-build-errors.py`
 """
 
 import importlib.util
+import json
 import os
 import sys
 import tempfile
@@ -218,11 +219,15 @@ def test_failed_regeneration_refuses_retry():
         check(exit_code == 1, f"{label} fails the analysis step")
 
 
+# Real `xcrun simctl list devices --json` schema: the runtime identifies a device by
+# the key of the array holding it, and the record itself carries no runtimeIdentifier.
+# Recovery must derive that field itself, so the fixture must not pre-enrich it.
+RUNTIME_ID = "com.apple.CoreSimulator.SimRuntime.iOS-26-5"
 CI_SIMULATOR = {
     "name": "iPhone 17 Pro",
     "udid": "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE",
     "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro",
-    "runtimeIdentifier": "com.apple.CoreSimulator.SimRuntime.iOS-26-5",
+    "state": "Booted",
     "isAvailable": True,
 }
 TICKET_SIMULATOR = dict(CI_SIMULATOR, name="Ticket SX-622 - iPhone 17 Pro")
@@ -243,37 +248,56 @@ MACHINE_GLOBAL_MARKS = (
 )
 
 
-def simulator_outcome(handler, destination=DESTINATION, devices=None, failing_simctl=()):
-    """Run a simulator recovery handler with simctl captured instead of executed."""
-    devices = CI_SIMULATOR if devices is None else devices
+def simctl_list_json(devices):
+    """The simctl JSON for one runtime holding `devices`, exactly as simctl prints it."""
+    return {"devices": {RUNTIME_ID: devices}}
+
+
+class FakeCompleted:
+    """Just enough of subprocess.CompletedProcess for the simctl fakes."""
+
+    def __init__(self, returncode, stdout, stderr=""):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def simulator_outcome(handler, destination=DESTINATION, devices=None, failing_simctl=(), github_env=None):
+    """Run a simulator recovery handler with simctl captured instead of executed.
+
+    The subprocess fake returns real-schema simctl JSON for `list` so the handler's
+    runtime attribution runs for real, and records every other simctl invocation.
+    """
+    devices = [CI_SIMULATOR] if devices is None else devices
     simctl_commands = []
     retried = False
+    env_at_retry = None
     original_env = os.environ.get("IOS_SIMULATOR_DESTINATION")
-    original_devices = getattr(cbe, "simctl_devices", None)
-    original_with_output = cbe.run_simctl_with_output
-    original_run_simctl = cbe.run_simctl
+    original_github_env = os.environ.get("GITHUB_ENV")
+    original_run = cbe.subprocess.run
     original_set_retry = cbe.set_retry_build
     original_system = cbe.os.system
     if destination is None:
         os.environ.pop("IOS_SIMULATOR_DESTINATION", None)
     else:
         os.environ["IOS_SIMULATOR_DESTINATION"] = destination
+    if github_env is not None:
+        os.environ["GITHUB_ENV"] = github_env
 
-    def fake_devices():
-        return {CI_SIMULATOR["udid"]: devices} if devices else {}
-
-    def fake_with_output(*arguments):
-        simctl_commands.append(arguments)
-        failed = arguments[0] in failing_simctl
-        return (1 if failed else 0, "NEW-UDID\n" if arguments[0] == "create" else "")
+    def fake_run(command, **_kwargs):
+        if command[:2] == ["xcrun", "simctl"] and command[2] == "list":
+            return FakeCompleted(0, json.dumps(simctl_list_json(devices)))
+        simctl_commands.append(tuple(command[2:]))
+        verb = command[2]
+        stdout = "NEW-UDID\n" if verb == "create" else ""
+        return FakeCompleted(1 if verb in failing_simctl else 0, stdout)
 
     def fake_set_retry_build():
-        nonlocal retried
+        nonlocal retried, env_at_retry
         retried = True
+        env_at_retry = os.environ.get("IOS_SIMULATOR_DESTINATION")
 
-    cbe.simctl_devices = fake_devices
-    cbe.run_simctl_with_output = fake_with_output
-    cbe.run_simctl = lambda *args: fake_with_output(*args)[0]
+    cbe.subprocess.run = fake_run
     cbe.set_retry_build = fake_set_retry_build
     cbe.os.system = lambda *_args, **_kwargs: 0
     try:
@@ -286,12 +310,14 @@ def simulator_outcome(handler, destination=DESTINATION, devices=None, failing_si
             os.environ.pop("IOS_SIMULATOR_DESTINATION", None)
         else:
             os.environ["IOS_SIMULATOR_DESTINATION"] = original_env
-        cbe.simctl_devices = original_devices
-        cbe.run_simctl_with_output = original_with_output
-        cbe.run_simctl = original_run_simctl
+        if original_github_env is None:
+            os.environ.pop("GITHUB_ENV", None)
+        else:
+            os.environ["GITHUB_ENV"] = original_github_env
+        cbe.subprocess.run = original_run
         cbe.set_retry_build = original_set_retry
         cbe.os.system = original_system
-    return simctl_commands, retried
+    return simctl_commands, retried, env_at_retry
 
 
 def simctl_verbs(commands):
@@ -301,7 +327,7 @@ def simctl_verbs(commands):
 
 def test_simulator_recovery_is_device_scoped():
     """A simulator error erases only the CI-owned device from the destination."""
-    commands, retried = simulator_outcome(cbe.handle_simulator_error)
+    commands, retried, _env = simulator_outcome(cbe.handle_simulator_error)
     check(
         simctl_verbs(commands) == ["shutdown", "erase"],
         "simulator recovery shuts down and erases exactly the destination device",
@@ -316,7 +342,7 @@ def test_simulator_recovery_is_device_scoped():
 def test_simulator_recovery_refuses_ticket_devices():
     """A `Ticket`-prefixed device is never erased, deleted, or recreated (PL-376)."""
     for handler in (cbe.handle_simulator_error, cbe.handle_recreate_simulators_error):
-        commands, retried = simulator_outcome(handler, devices=TICKET_SIMULATOR)
+        commands, retried, _env = simulator_outcome(handler, devices=[TICKET_SIMULATOR])
         check(
             commands == [],
             f"{handler.__name__} runs no commands against a ticket-owned simulator",
@@ -327,14 +353,14 @@ def test_simulator_recovery_refuses_ticket_devices():
 def test_simulator_recovery_without_udid_is_plain_retry():
     """Without a destination UDID the retry is offered without any destructive command."""
     for handler in (cbe.handle_simulator_error, cbe.handle_recreate_simulators_error):
-        commands, retried = simulator_outcome(handler, destination=None)
+        commands, retried, _env = simulator_outcome(handler, destination=None)
         check(commands == [], f"{handler.__name__} runs nothing when no CI device is known")
         check(retried is True, f"{handler.__name__} still retries without destructive recovery")
 
 
 def test_recreate_recovery_escalates_to_device_recreate():
     """A failed erase of a corrupt device is answered by recreating that one device."""
-    commands, retried = simulator_outcome(
+    commands, retried, _env = simulator_outcome(
         cbe.handle_recreate_simulators_error, failing_simctl=("erase",)
     )
     verbs = simctl_verbs(commands)
@@ -348,13 +374,37 @@ def test_recreate_recovery_escalates_to_device_recreate():
             and arguments[1:] == (
                 CI_SIMULATOR["name"],
                 CI_SIMULATOR["deviceTypeIdentifier"],
-                CI_SIMULATOR["runtimeIdentifier"],
+                # The runtime must be attributed from the enclosing simctl key, not
+                # from the device record, which does not carry it.
+                RUNTIME_ID,
             )
             for arguments in commands
         ),
         "the recreated device keeps its own name, device type, and runtime",
     )
     check(retried is True, "device-scoped recreate still schedules the retry")
+
+
+def test_recreate_recovery_retargets_the_destination():
+    """The retry must target the recreated device's new UDID, not the deleted one."""
+    github_env = os.path.join(tempfile.mkdtemp(), "github_env")
+    _commands, retried, env_at_retry = simulator_outcome(
+        cbe.handle_recreate_simulators_error,
+        failing_simctl=("erase",),
+        github_env=github_env,
+    )
+    retargeted = "platform=iOS Simulator,OS=26.5,id=NEW-UDID"
+    check(
+        env_at_retry == retargeted,
+        "the destination names the recreated device by the time the retry is scheduled",
+    )
+    with open(github_env, encoding="utf-8") as handle:
+        written = handle.read()
+    check(
+        written == f"IOS_SIMULATOR_DESTINATION={retargeted}",
+        "$GITHUB_ENV receives the retargeted destination for the later steps",
+    )
+    check(retried is True, "recreation with retargeting still schedules the retry")
 
 
 def test_no_machine_global_recovery_commands():
@@ -369,7 +419,7 @@ def test_no_machine_global_recovery_commands():
     ]
     for handler in handlers:
         if handler in (cbe.handle_simulator_error, cbe.handle_recreate_simulators_error):
-            commands, _retried = simulator_outcome(handler)
+            commands, _retried, _env = simulator_outcome(handler)
             captured = [" ".join(arguments) for arguments in commands]
         else:
             commands, _retried, _exit = recovery_outcome(handler, "executable", True)
@@ -672,6 +722,7 @@ test_simulator_recovery_is_device_scoped()
 test_simulator_recovery_refuses_ticket_devices()
 test_simulator_recovery_without_udid_is_plain_retry()
 test_recreate_recovery_escalates_to_device_recreate()
+test_recreate_recovery_retargets_the_destination()
 test_no_machine_global_recovery_commands()
 test_priority_is_global()
 test_frameless_runner_crash_retries()

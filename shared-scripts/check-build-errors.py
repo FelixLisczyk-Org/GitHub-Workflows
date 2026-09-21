@@ -156,11 +156,16 @@ def simctl_devices():
         print(f"Could not list simulator devices: {e}")
         return {}
     devices = {}
-    for runtime_devices in data.get("devices", {}).values():
+    # `simctl` identifies a device's runtime by the key of the array holding it, not by
+    # a field on the record, so the runtime is copied onto each device. Recreation
+    # needs it to rebuild the device with `simctl create`.
+    for runtime_id, runtime_devices in data.get("devices", {}).items():
         for device in runtime_devices:
             udid = device.get("udid", "")
             if udid:
-                devices[udid] = device
+                device_info = dict(device)
+                device_info["runtimeIdentifier"] = runtime_id
+                devices[udid] = device_info
     return devices
 
 
@@ -216,28 +221,61 @@ def erase_ci_device(udid):
 
 
 def recreate_ci_device(udid):
-    """Delete and recreate the single CI-owned simulator `udid`. Returns success."""
+    """Delete and recreate the single CI-owned simulator `udid`.
+
+    Returns the recreated device's new UDID, or None when the recreation failed. The
+    new UDID differs from `udid` by construction, so the caller must retarget the
+    destination before the retry runs against the old, deleted device.
+    """
     device = recoverable_ci_device(udid)
     if device is None:
-        return False
+        return None
     name = device.get("name", "")
     device_type = device.get("deviceTypeIdentifier", "")
     runtime = device.get("runtimeIdentifier", "")
     if not name or not device_type or not runtime:
         print(f"Simulator {udid} lacks the metadata needed for a device-scoped recreate; skipping recovery.")
-        return False
+        return None
     print(f"Recreating CI simulator {name!r} ({udid}) from scratch")
     if run_simctl("shutdown", udid) != 0:
         print("Continuing with deletion despite the shutdown failure")
     if run_simctl("delete", udid) != 0:
-        return False
+        return None
     status, output = run_simctl_with_output("create", name, device_type, runtime)
     if status != 0:
         print(f"Could not recreate simulator {name!r}")
-        return False
+        return None
     created_udid = output.strip()
     print(f"Recreated simulator {name!r} as {created_udid}")
-    return True
+    return created_udid
+
+
+def set_destination_udid(udid):
+    """Point `IOS_SIMULATOR_DESTINATION` at `udid` for the retry and later steps.
+
+    The retry steps re-read the destination from the environment, so both the running
+    process's environment and `$GITHUB_ENV` must name the recreated device; otherwise
+    xcodebuild would target the UDID that was just deleted.
+    """
+    destination = os.environ.get("IOS_SIMULATOR_DESTINATION", "")
+    fields = []
+    replaced = False
+    for field in destination.split(","):
+        if field.strip().startswith("id="):
+            fields.append(f"id={udid}")
+            replaced = True
+        else:
+            fields.append(field)
+    if not replaced:
+        print("IOS_SIMULATOR_DESTINATION does not name a device; leaving it unchanged")
+        return
+    updated = ",".join(fields)
+    os.environ["IOS_SIMULATOR_DESTINATION"] = updated
+    env_file_path = os.getenv("GITHUB_ENV")
+    if env_file_path:
+        with open(env_file_path, "a", encoding="utf-8") as f:
+            f.write(f"IOS_SIMULATOR_DESTINATION={updated}")
+    print(f"Retargeted IOS_SIMULATOR_DESTINATION at the recreated simulator: {updated}")
 
 
 def regenerate_project_without_binary_cache():
@@ -328,13 +366,17 @@ def handle_recreate_simulators_error(err):
         )
     elif erase_ci_device(udid):
         print(f"Erased CI simulator {udid}")
-    elif recreate_ci_device(udid):
-        print(f"Recreated CI simulator {udid}")
     else:
-        print(
-            f"Could not recover CI simulator {udid} within device-scoped operations; "
-            "retrying without destructive recovery."
-        )
+        recreated_udid = recreate_ci_device(udid)
+        if recreated_udid:
+            # `simctl create` mints a new UDID, so the retry must target the recreated
+            # device rather than the one just deleted.
+            set_destination_udid(recreated_udid)
+        else:
+            print(
+                f"Could not recover CI simulator {udid} within device-scoped operations; "
+                "retrying without destructive recovery."
+            )
     set_retry_build()
 
 

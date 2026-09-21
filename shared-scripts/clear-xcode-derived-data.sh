@@ -23,8 +23,13 @@ else
 fi
 
 # The ownership boundary: the CI checkout being recovered, or the current directory
-# when the script runs outside GitHub Actions.
-BOUNDARY=$(cd "${GITHUB_WORKSPACE:-$(pwd)}" && pwd -P)
+# when the script runs outside GitHub Actions. An unresolvable boundary must fail
+# closed: with BOUNDARY empty the ownership check below would match every absolute
+# path and delete other checkouts' DerivedData again.
+if ! BOUNDARY=$(cd "${GITHUB_WORKSPACE:-$(pwd)}" && pwd -P) || [ -z "$BOUNDARY" ]; then
+    echo "Could not resolve the workspace ownership boundary; refusing DerivedData cleanup" >&2
+    exit 1
+fi
 
 resolve() {
     (cd "$1" 2>/dev/null && pwd -P)
