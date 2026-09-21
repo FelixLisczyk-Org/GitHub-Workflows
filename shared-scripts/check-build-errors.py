@@ -7,6 +7,14 @@ Only the logs written by the current invocation are analysed (see `log_scope`), 
 retry is only offered when nothing in the results looks like a genuine test failure -
 those never heal on a rerun, so recovering from one just multiplies the wall-clock cost
 of a red build.
+
+Recovery itself is scoped by PL-377: the Studio runs CI alongside agent and manual work
+as the same user, so a handler may only clear state owned by the current CI workspace
+and the CI-owned simulator device named in `IOS_SIMULATOR_DESTINATION`. Machine-global
+operations - quitting shared apps, killing CoreSimulatorService or DTServiceHub,
+deleting `~/Library/Developer/CoreSimulator` or the shared Tuist/SwiftPM caches - are
+never performed; when they would have been the only effective repair, the handler logs
+that and retries without destructive recovery.
 """
 
 import json
@@ -105,6 +113,133 @@ recreate_simulators_errors = [
 ]
 
 
+# PL-376 gives agents disposable `Ticket <ID> - ...` simulators whose installed app
+# and data state must survive CI. Recovery therefore refuses to touch any device
+# whose name begins with that prefix, no matter which UDID the destination named.
+TICKET_DEVICE_PREFIX = "Ticket "
+
+# PL-377: the Studio runs CI and agent/manual work as the same user, so recovery may
+# only mutate the failed job's own workspace and the CI-owned simulator device.
+# Machine-global operations (quitting shared apps, killing CoreSimulatorService or
+# DTServiceHub, deleting ~/Library/CoreSimulator or ~/.cache/tuist) are gone for good.
+
+
+def destination_udid():
+    """Return the simulator UDID the failed job tested against, or None.
+
+    `xcode-test-package` exports `IOS_SIMULATOR_DESTINATION=platform=iOS
+    Simulator,OS=…,id=<UDID>` (see select-ios-simulator-destination.py), which names
+    the exact device. Fastlane-driven app jobs resolve their destination inside the
+    app repos, so no UDID reaches this script and recovery degrades to a bare retry.
+    """
+    destination = os.environ.get("IOS_SIMULATOR_DESTINATION", "")
+    for field in destination.split(","):
+        field = field.strip()
+        if field.startswith("id="):
+            udid = field[len("id="):]
+            if udid:
+                return udid
+    return None
+
+
+def simctl_devices():
+    """Return the known simulator devices as a name→udid and udid→info pair."""
+    try:
+        result = subprocess.run(
+            ["xcrun", "simctl", "list", "devices", "--json"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        data = json.loads(result.stdout)
+    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError) as e:
+        print(f"Could not list simulator devices: {e}")
+        return {}
+    devices = {}
+    for runtime_devices in data.get("devices", {}).values():
+        for device in runtime_devices:
+            udid = device.get("udid", "")
+            if udid:
+                devices[udid] = device
+    return devices
+
+
+def recoverable_ci_device(udid):
+    """Return the device info for `udid` if recovery may touch it, else None."""
+    if not udid:
+        return None
+    devices = simctl_devices()
+    device = devices.get(udid)
+    if device is None:
+        print(f"Simulator {udid} is not a known device; refusing device-scoped recovery.")
+        return None
+    name = device.get("name", "")
+    if name.startswith(TICKET_DEVICE_PREFIX):
+        # PL-376 ownership contract: ticket simulators are never CI-recoverable.
+        print(
+            f"Refusing to recover simulator {name!r}: 'Ticket'-prefixed devices belong "
+            "to agent work, not to CI."
+        )
+        return None
+    return device
+
+
+def run_simctl(*arguments):
+    """Run one `xcrun simctl` command, reporting rather than raising failure."""
+    status, _output = run_simctl_with_output(*arguments)
+    return status
+
+
+def run_simctl_with_output(*arguments):
+    """Run one `xcrun simctl` command and return `(status, stdout)`."""
+    command = ["xcrun", "simctl", *arguments]
+    print(f"Executing: {' '.join(command)}")
+    try:
+        result = subprocess.run(command, capture_output=True, text=True)
+    except OSError as e:
+        print(f"simctl {' '.join(arguments)} could not run: {e}")
+        return 1, ""
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        print(f"simctl {' '.join(arguments)} failed with status {result.returncode}: {detail}")
+    return result.returncode, result.stdout
+
+
+def erase_ci_device(udid):
+    """Shut down and erase the single CI-owned simulator `udid`. Returns success."""
+    device = recoverable_ci_device(udid)
+    if device is None:
+        return False
+    print(f"Recovering CI simulator {device.get('name', udid)} ({udid}) by shutting it down and erasing it")
+    run_simctl("shutdown", udid)  # A shutdown failure must not skip the erase.
+    return run_simctl("erase", udid) == 0
+
+
+def recreate_ci_device(udid):
+    """Delete and recreate the single CI-owned simulator `udid`. Returns success."""
+    device = recoverable_ci_device(udid)
+    if device is None:
+        return False
+    name = device.get("name", "")
+    device_type = device.get("deviceTypeIdentifier", "")
+    runtime = device.get("runtimeIdentifier", "")
+    if not name or not device_type or not runtime:
+        print(f"Simulator {udid} lacks the metadata needed for a device-scoped recreate; skipping recovery.")
+        return False
+    print(f"Recreating CI simulator {name!r} ({udid}) from scratch")
+    if run_simctl("shutdown", udid) != 0:
+        print("Continuing with deletion despite the shutdown failure")
+    if run_simctl("delete", udid) != 0:
+        return False
+    status, output = run_simctl_with_output("create", name, device_type, runtime)
+    if status != 0:
+        print(f"Could not recreate simulator {name!r}")
+        return False
+    created_udid = output.strip()
+    print(f"Recreated simulator {name!r} as {created_udid}")
+    return True
+
+
 def regenerate_project_without_binary_cache():
     """Regenerate through the repository entry point, with a Tuist fallback."""
     if os.path.isfile("generate.sh") and os.access("generate.sh", os.X_OK):
@@ -131,13 +266,14 @@ def set_retry_after_project_regeneration():
 
 
 def handle_derived_data_and_tuist_cache_error(err):
-    """Clear stale build state and regenerate without warming the binary cache."""
+    """Clear stale workspace-local build state and regenerate without warming the binary cache.
+
+    The global Tuist binary cache at `~/.cache/tuist` is shared by every process on the
+    machine, so suspect binary-cache state is bypassed via `--no-binary-cache` instead
+    of deleted (PL-377).
+    """
     print(f"Found linker error requiring derived data and Tuist state clearing: {err}")
     os.system(f"{os.path.dirname(__file__)}/clear-xcode-derived-data.sh")
-    tuist_cache_path = os.path.expanduser("~/.cache/tuist")
-    if os.path.exists(tuist_cache_path):
-        print(f"Clearing global Tuist binary cache at {tuist_cache_path}")
-        os.system(f"rm -rf {tuist_cache_path}")
     project_tuist_path = "Tuist/.build"
     cache_marker_path = os.path.join(project_tuist_path, ".package-resolved-hash")
     if os.path.exists(project_tuist_path):
@@ -157,47 +293,59 @@ def handle_derived_data_error(err):
 
 
 def handle_simulator_error(err):
-    """Handle simulator errors by quitting Xcode, Simulator, Instruments, killing CoreSimulatorService, and removing CoreSimulator data"""
+    """Recover a simulator error by erasing only the CI-owned simulator device."""
     print(f"Found simulator error: {err}")
-    commands = [
-        "osascript -e 'quit app \"Xcode\"'",
-        "osascript -e 'quit app \"Simulator\"'",
-        "osascript -e 'quit app \"Instruments\"'",
-        "killall -9 com.apple.CoreSimulator.CoreSimulatorService",
-        "rm -rf ~/Library/Xcode/CoreSimulator",
-    ]
-    for cmd in commands:
-        print(f"Executing: {cmd}")
-        os.system(cmd)
+    udid = destination_udid()
+    if udid is None:
+        print(
+            "No CI simulator UDID is known (IOS_SIMULATOR_DESTINATION does not name a device), "
+            "so no device-scoped recovery is possible. Machine-wide simulator recovery is not "
+            "permitted on the shared Studio; retrying without destructive recovery."
+        )
+    elif erase_ci_device(udid):
+        print(f"Erased CI simulator {udid}")
+    else:
+        print(f"Could not erase CI simulator {udid}; retrying without destructive recovery.")
     set_retry_build()
 
 
 def handle_recreate_simulators_error(err):
-    """Handle corrupt simulator errors by quitting Xcode, Simulator, Instruments, killing CoreSimulatorService, killing stale DTServiceHub processes, and removing the entire CoreSimulator directory so simulators are recreated fresh"""
-    print(f"Found simulator error requiring full recreate: {err}")
-    commands = [
-        "osascript -e 'quit app \"Xcode\"'",
-        "osascript -e 'quit app \"Simulator\"'",
-        "osascript -e 'quit app \"Instruments\"'",
-        "killall -9 com.apple.CoreSimulator.CoreSimulatorService",
-        "killall -9 DTServiceHub",
-        "rm -rf ~/Library/Developer/CoreSimulator",
-    ]
-    for cmd in commands:
-        print(f"Executing: {cmd}")
-        os.system(cmd)
+    """Recover a corrupt simulator by erasing, or recreating, only the CI-owned device.
+
+    The corrupt install database behind these errors used to be answered by deleting
+    the entire `~/Library/Developer/CoreSimulator` directory. On the shared Studio that
+    would destroy every CI and ticket-owned simulator, so the same escalation happens
+    one device at a time: erase first, and only if the erase cannot make the device
+    usable, delete and recreate that exact device from its own metadata.
+    """
+    print(f"Found simulator error requiring device recreate: {err}")
+    udid = destination_udid()
+    if udid is None:
+        print(
+            "No CI simulator UDID is known (IOS_SIMULATOR_DESTINATION does not name a device), "
+            "so no device-scoped recovery is possible. Machine-wide simulator recovery is not "
+            "permitted on the shared Studio; retrying without destructive recovery."
+        )
+    elif erase_ci_device(udid):
+        print(f"Erased CI simulator {udid}")
+    elif recreate_ci_device(udid):
+        print(f"Recreated CI simulator {udid}")
+    else:
+        print(
+            f"Could not recover CI simulator {udid} within device-scoped operations; "
+            "retrying without destructive recovery."
+        )
     set_retry_build()
 
 
 def handle_tuist_cache_error(err):
-    """Clear stale Tuist state and regenerate without warming the binary cache."""
+    """Clear stale workspace-local Tuist state and regenerate without warming the binary cache.
+
+    Only workspace-owned state is cleared here; the global binary cache is bypassed by
+    the `--no-binary-cache` regeneration instead of being deleted for every process on
+    the machine (PL-377).
+    """
     print(f"Found error that requires clearing Tuist state: {err}")
-    tuist_cache_path = os.path.expanduser("~/.cache/tuist")
-    if os.path.exists(tuist_cache_path):
-        print(f"Clearing global Tuist binary cache at {tuist_cache_path}")
-        os.system(f"rm -rf {tuist_cache_path}")
-    else:
-        print(f"Global Tuist binary cache not found at {tuist_cache_path}")
     project_tuist_path = "Tuist/.build"
     cache_marker_path = os.path.join(project_tuist_path, ".package-resolved-hash")
     if os.path.exists(project_tuist_path):

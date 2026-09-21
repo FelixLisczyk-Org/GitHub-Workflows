@@ -218,6 +218,173 @@ def test_failed_regeneration_refuses_retry():
         check(exit_code == 1, f"{label} fails the analysis step")
 
 
+CI_SIMULATOR = {
+    "name": "iPhone 17 Pro",
+    "udid": "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE",
+    "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro",
+    "runtimeIdentifier": "com.apple.CoreSimulator.SimRuntime.iOS-26-5",
+    "isAvailable": True,
+}
+TICKET_SIMULATOR = dict(CI_SIMULATOR, name="Ticket SX-622 - iPhone 17 Pro")
+DESTINATION = f"platform=iOS Simulator,OS=26.5,id={CI_SIMULATOR['udid']}"
+
+# Operations that would mutate state shared by every process on the Studio. No recovery
+# path may issue any of them again (PL-377).
+MACHINE_GLOBAL_MARKS = (
+    "killall",
+    "osascript",
+    "quit app",
+    "CoreSimulatorService",
+    "DTServiceHub",
+    "Library/Developer/CoreSimulator",
+    "Library/Xcode/CoreSimulator",
+    ".cache/tuist",
+    "org.swift.swiftpm",
+)
+
+
+def simulator_outcome(handler, destination=DESTINATION, devices=None, failing_simctl=()):
+    """Run a simulator recovery handler with simctl captured instead of executed."""
+    devices = CI_SIMULATOR if devices is None else devices
+    simctl_commands = []
+    retried = False
+    original_env = os.environ.get("IOS_SIMULATOR_DESTINATION")
+    original_devices = getattr(cbe, "simctl_devices", None)
+    original_with_output = cbe.run_simctl_with_output
+    original_run_simctl = cbe.run_simctl
+    original_set_retry = cbe.set_retry_build
+    original_system = cbe.os.system
+    if destination is None:
+        os.environ.pop("IOS_SIMULATOR_DESTINATION", None)
+    else:
+        os.environ["IOS_SIMULATOR_DESTINATION"] = destination
+
+    def fake_devices():
+        return {CI_SIMULATOR["udid"]: devices} if devices else {}
+
+    def fake_with_output(*arguments):
+        simctl_commands.append(arguments)
+        failed = arguments[0] in failing_simctl
+        return (1 if failed else 0, "NEW-UDID\n" if arguments[0] == "create" else "")
+
+    def fake_set_retry_build():
+        nonlocal retried
+        retried = True
+
+    cbe.simctl_devices = fake_devices
+    cbe.run_simctl_with_output = fake_with_output
+    cbe.run_simctl = lambda *args: fake_with_output(*args)[0]
+    cbe.set_retry_build = fake_set_retry_build
+    cbe.os.system = lambda *_args, **_kwargs: 0
+    try:
+        try:
+            handler("fixture error")
+        except SystemExit as error:
+            check(error.code == 0, f"{handler.__name__} exits successfully after scheduling the retry")
+    finally:
+        if original_env is None:
+            os.environ.pop("IOS_SIMULATOR_DESTINATION", None)
+        else:
+            os.environ["IOS_SIMULATOR_DESTINATION"] = original_env
+        cbe.simctl_devices = original_devices
+        cbe.run_simctl_with_output = original_with_output
+        cbe.run_simctl = original_run_simctl
+        cbe.set_retry_build = original_set_retry
+        cbe.os.system = original_system
+    return simctl_commands, retried
+
+
+def simctl_verbs(commands):
+    """The first argument of every captured simctl invocation."""
+    return [arguments[0] for arguments in commands]
+
+
+def test_simulator_recovery_is_device_scoped():
+    """A simulator error erases only the CI-owned device from the destination."""
+    commands, retried = simulator_outcome(cbe.handle_simulator_error)
+    check(
+        simctl_verbs(commands) == ["shutdown", "erase"],
+        "simulator recovery shuts down and erases exactly the destination device",
+    )
+    check(
+        all(CI_SIMULATOR["udid"] in arguments for arguments in commands),
+        "every recovery command names the failed job's own simulator UDID",
+    )
+    check(retried is True, "device-scoped erase still schedules the retry")
+
+
+def test_simulator_recovery_refuses_ticket_devices():
+    """A `Ticket`-prefixed device is never erased, deleted, or recreated (PL-376)."""
+    for handler in (cbe.handle_simulator_error, cbe.handle_recreate_simulators_error):
+        commands, retried = simulator_outcome(handler, devices=TICKET_SIMULATOR)
+        check(
+            commands == [],
+            f"{handler.__name__} runs no commands against a ticket-owned simulator",
+        )
+        check(retried is True, f"{handler.__name__} still offers the non-destructive retry")
+
+
+def test_simulator_recovery_without_udid_is_plain_retry():
+    """Without a destination UDID the retry is offered without any destructive command."""
+    for handler in (cbe.handle_simulator_error, cbe.handle_recreate_simulators_error):
+        commands, retried = simulator_outcome(handler, destination=None)
+        check(commands == [], f"{handler.__name__} runs nothing when no CI device is known")
+        check(retried is True, f"{handler.__name__} still retries without destructive recovery")
+
+
+def test_recreate_recovery_escalates_to_device_recreate():
+    """A failed erase of a corrupt device is answered by recreating that one device."""
+    commands, retried = simulator_outcome(
+        cbe.handle_recreate_simulators_error, failing_simctl=("erase",)
+    )
+    verbs = simctl_verbs(commands)
+    check(
+        verbs == ["shutdown", "erase", "shutdown", "delete", "create"],
+        f"a failed erase escalates to delete and recreate, got {verbs}",
+    )
+    check(
+        any(
+            arguments[0] == "create"
+            and arguments[1:] == (
+                CI_SIMULATOR["name"],
+                CI_SIMULATOR["deviceTypeIdentifier"],
+                CI_SIMULATOR["runtimeIdentifier"],
+            )
+            for arguments in commands
+        ),
+        "the recreated device keeps its own name, device type, and runtime",
+    )
+    check(retried is True, "device-scoped recreate still schedules the retry")
+
+
+def test_no_machine_global_recovery_commands():
+    """No recovery path may issue an operation that mutates machine-global state."""
+    handlers = [
+        cbe.handle_derived_data_and_tuist_cache_error,
+        cbe.handle_derived_data_error,
+        cbe.handle_recreate_simulators_error,
+        cbe.handle_simulator_error,
+        cbe.handle_tuist_cache_error,
+        cbe.handle_regular_error,
+    ]
+    for handler in handlers:
+        if handler in (cbe.handle_simulator_error, cbe.handle_recreate_simulators_error):
+            commands, _retried = simulator_outcome(handler)
+            captured = [" ".join(arguments) for arguments in commands]
+        else:
+            commands, _retried, _exit = recovery_outcome(handler, "executable", True)
+            captured = commands
+        offending = [
+            command for command in captured
+            if any(mark in command for mark in MACHINE_GLOBAL_MARKS)
+        ]
+        check(offending == [], f"{handler.__name__} issues no machine-global command")
+        check(
+            not any(command.startswith(("rm -rf ~", "rm -rf /Users")) for command in captured),
+            f"{handler.__name__} removes nothing under the home directory",
+        )
+
+
 def test_priority_is_global():
     """The pre-existing global priority ordering is preserved."""
     combined = "Simulator device failed to install the application\nPlaceholder did not exist"
@@ -501,6 +668,11 @@ test_pattern_precision()
 test_unrelated_patterns_still_match()
 test_recovery_regenerates_without_warming_binary_cache()
 test_failed_regeneration_refuses_retry()
+test_simulator_recovery_is_device_scoped()
+test_simulator_recovery_refuses_ticket_devices()
+test_simulator_recovery_without_udid_is_plain_retry()
+test_recreate_recovery_escalates_to_device_recreate()
+test_no_machine_global_recovery_commands()
 test_priority_is_global()
 test_frameless_runner_crash_retries()
 test_frameless_runner_crash_survives_prefixes()
