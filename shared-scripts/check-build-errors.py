@@ -24,7 +24,7 @@ import subprocess
 import sys
 
 from log_scope import LOG_DIR, scoped_log_entries
-from xcresult_failures import format_test_identifier, get_test_failures, truncate_message
+from xcresult_failures import format_test_identifier, get_test_failures, get_test_results, truncate_message
 
 clear_derived_data_errors = [
     "Underlying Error: Test crashed with signal abrt before starting test execution.",
@@ -528,10 +528,16 @@ def get_xcresult_errors(xcresult_path):
 
 
 def collect_test_failures(entries):
-    """Return every test failure recorded by the xcresult bundles of this invocation."""
+    """Return failures from test plans that did not ultimately pass."""
     failures = []
     for path, name in entries:
         if name.endswith(".xcresult"):
+            results = get_test_results(path) or {}
+            plans = [node for node in results.get("testNodes", []) if node.get("nodeType") == "Test Plan"]
+            if plans and all(node.get("result") == "Passed" for node in plans):
+                # A successful retry can leave its earlier failure messages in the bundle.
+                print(f"Skipping earlier test failures in {path}: all test plans passed.")
+                continue
             failures.extend(get_test_failures(path))
     return failures
 

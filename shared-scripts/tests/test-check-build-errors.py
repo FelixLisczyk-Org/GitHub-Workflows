@@ -5,7 +5,7 @@ binary cache or rerunning a full lane for a failure a retry cannot fix:
 
 * the analysis is scoped to the logs of the current invocation (`log_scope`),
 * "no such file or directory" only matches a real compiler/linker diagnostic,
-* a genuine test failure suppresses the retry entirely.
+* a genuine test failure suppresses the retry entirely, but a test that passed on retry does not.
 
 Run directly: `python3 shared-scripts/tests/test-check-build-errors.py`
 """
@@ -535,7 +535,7 @@ def make_log_dir(entries):
     return root
 
 
-def run_main(root, scope_epoch, test_failures=None):
+def run_main(root, scope_epoch, test_failures=None, test_plan_result="Failed"):
     """Run `main()` in `root` and report whether it asked for a retry.
 
     Handlers are neutered so the destructive recovery commands never run, and the
@@ -550,6 +550,8 @@ def run_main(root, scope_epoch, test_failures=None):
     original_set_retry = cbe.set_retry_build
     original_system = cbe.os.system
     original_get_failures = cbe.get_test_failures
+    original_get_results = cbe.get_test_results
+    original_get_errors = cbe.get_xcresult_errors
     original_cwd = os.getcwd()
     original_epoch = os.environ.pop(cbe.log_scope.SCOPE_EPOCH_VAR, None) if hasattr(cbe, "log_scope") else None
     original_epoch = os.environ.pop("CI_LOG_SCOPE_EPOCH", original_epoch)
@@ -557,6 +559,10 @@ def run_main(root, scope_epoch, test_failures=None):
     cbe.set_retry_build = fake_set_retry_build
     cbe.os.system = lambda *_args, **_kwargs: 0
     cbe.get_test_failures = lambda _path: list(test_failures or [])
+    cbe.get_test_results = lambda _path: {
+        "testNodes": [{"nodeType": "Test Plan", "result": test_plan_result}]
+    }
+    cbe.get_xcresult_errors = lambda _path: []
     if scope_epoch is not None:
         os.environ["CI_LOG_SCOPE_EPOCH"] = str(scope_epoch)
 
@@ -571,6 +577,8 @@ def run_main(root, scope_epoch, test_failures=None):
         cbe.set_retry_build = original_set_retry
         cbe.os.system = original_system
         cbe.get_test_failures = original_get_failures
+        cbe.get_test_results = original_get_results
+        cbe.get_xcresult_errors = original_get_errors
         os.environ.pop("CI_LOG_SCOPE_EPOCH", None)
         if original_epoch is not None:
             os.environ["CI_LOG_SCOPE_EPOCH"] = original_epoch
@@ -628,6 +636,38 @@ def test_genuine_test_failure_suppresses_retry():
     check(
         run_main(root, scope_epoch=time.time() - 60, test_failures=genuine) is False,
         "a genuine test failure suppresses the retry even when a build pattern also matches",
+    )
+
+
+def test_passed_test_plan_does_not_suppress_build_retry():
+    """A test that passed on retry must not mask a later build failure."""
+    root = make_log_dir(
+        [
+            ("SnipNotes (iOS).xcresult", "", 0),
+            ("SnipNotesApp-SnipNotes (iOS).log", LINKER_ERROR, 0),
+        ]
+    )
+    earlier_failure = [
+        {
+            "path": ["SnipNotesUITests", "ModifyNoteTests", "testModifyNoteRepeatedly()"],
+            "message": "Failed to get matching snapshot: keyboard focus was lost",
+            "device": "iPhone 17 Pro",
+        }
+    ]
+    check(
+        run_main(root, scope_epoch=time.time() - 60, test_failures=earlier_failure,
+                 test_plan_result="Passed") is True,
+        "an earlier test failure does not veto retry when the final test plan passed",
+    )
+    check(
+        run_main(root, scope_epoch=time.time() - 60, test_failures=earlier_failure,
+                 test_plan_result="Failed") is False,
+        "the same failure still vetoes retry when the final test plan failed",
+    )
+    check(
+        run_main(root, scope_epoch=time.time() - 60, test_failures=earlier_failure,
+                 test_plan_result=None) is False,
+        "an unknown final test result does not hide a genuine failure",
     )
 
 
@@ -722,11 +762,14 @@ def test_non_xcresult_entries_are_not_probed():
     """`.log` files must not be handed to the xcresult reader."""
     probed = []
     cbe_get = cbe.get_test_failures
+    cbe_get_results = cbe.get_test_results
     cbe.get_test_failures = lambda path: probed.append(path) or []
+    cbe.get_test_results = lambda _path: {"testNodes": [{"nodeType": "Test Plan", "result": "Failed"}]}
     try:
         cbe.collect_test_failures([("log/build.log", "build.log"), ("log/R.xcresult", "R.xcresult")])
     finally:
         cbe.get_test_failures = cbe_get
+        cbe.get_test_results = cbe_get_results
     check(probed == ["log/R.xcresult"], "only xcresult bundles are read for test failures")
 
 
@@ -748,6 +791,7 @@ test_frameless_runner_crash_is_not_genuine()
 test_scoping_ignores_earlier_invocations()
 test_scoping_keeps_current_invocation()
 test_genuine_test_failure_suppresses_retry()
+test_passed_test_plan_does_not_suppress_build_retry()
 test_infrastructure_test_failure_still_retries()
 test_xcresult_bundle_mtime_uses_children()
 test_missing_log_directory_is_tolerated()
