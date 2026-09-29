@@ -8,6 +8,13 @@ set -euo pipefail
 : "${PROVIDER:?PROVIDER is required}"
 : "${ACTION_PATH:?ACTION_PATH is required}"
 
+# Mask the key in logs even if the caller did not pass it via secrets.*
+echo "::add-mask::${API_KEY}"
+
+# Remove workspace files and temp files on any exit so a failed run does not
+# leave PR content behind (relevant on self-hosted runners).
+trap 'rm -f "${CONTEXT_FILE:-}" "${GUIDELINES_FILE:-}" "${REVIEW_FILE:-}" "${REVIEW_FILE:+${REVIEW_FILE}.trimmed}" "${STDERR_FILE:-}"' EXIT
+
 echo "::group::AI Code Review Setup"
 echo "Provider: ${PROVIDER}"
 echo "Model: ${MODEL}"
@@ -301,7 +308,6 @@ for attempt in $(seq 1 "${MAX_REVIEW_ATTEMPTS}"); do
   fi
 done
 
-rm -f "${CONTEXT_FILE}" "${STDERR_FILE}"
 echo "::endgroup::"
 
 # --- Validate output ---
@@ -310,7 +316,6 @@ echo "::endgroup::"
 # above, so every re-run would pile on another junk comment.
 if [ "${REVIEW_COMPLETE}" != "true" ]; then
   echo "::warning::OpenCode did not produce a complete review after ${MAX_REVIEW_ATTEMPTS} attempts. Nothing posted."
-  rm -f "${REVIEW_FILE}"
   exit 1
 fi
 
@@ -329,6 +334,3 @@ echo "Posting review comment to PR #${PR_NUMBER}..."
 gh pr comment "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --body-file "${REVIEW_FILE}"
 echo "Review comment posted successfully."
 echo "::endgroup::"
-
-# Cleanup
-rm -f "${REVIEW_FILE}" "${GUIDELINES_FILE}"
