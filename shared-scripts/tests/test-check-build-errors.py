@@ -93,6 +93,9 @@ def test_unrelated_patterns_still_match():
     """Adding regex support must not change how the plain string patterns behave."""
     cases = [
         ("ld: symbol(s) not found for architecture arm64", cbe.handle_derived_data_and_tuist_cache_error),
+        ("ld: framework 'AppCenterCrashesTarget' not found", cbe.handle_derived_data_and_tuist_cache_error),
+        ("Framework 'AppCenterCrashesTarget' not found", cbe.handle_derived_data_and_tuist_cache_error),
+        ("Linker command failed with exit code 1 (use -v to see invocation)", None),
         ("Module compiled with Swift 6.2 cannot be imported by the Swift 6.1.2 compiler", cbe.handle_derived_data_error),
         ("Placeholder did not exist", cbe.handle_recreate_simulators_error),
         ("Failed to establish communication with the test runner", cbe.handle_simulator_error),

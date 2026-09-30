@@ -46,9 +46,18 @@ clear_derived_data_errors = [
 # Tuist binary cache warm and a full lane rerun on an unrelated platform.
 missing_build_input_error = re.compile(r"no such file or directory:\s*\S", re.IGNORECASE)
 
+# The linker cannot find a framework product that DerivedData should contain, e.g.
+# `ld: framework 'AppCenterCrashesTarget' not found`, summarized in the xcresult as
+# `Framework 'AppCenterCrashesTarget' not found`. Seen when stale-file removal in a
+# persistent DerivedData directory recreated a static framework wrapper without its binary
+# while the build database still considered the Libtool step up to date. The quoted name
+# keeps this from matching prose such as "framework not found in search paths".
+missing_framework_error = re.compile(r"framework '[^']+' not found", re.IGNORECASE)
+
 clear_derived_data_and_tuist_cache_errors = [
     "ld: symbol(s) not found",
     missing_build_input_error,  # Missing file in DerivedData after dependency update; often caused by stale Tuist cache
+    missing_framework_error,  # Framework product missing its binary in a stale DerivedData directory
     "Undefined symbol: type metadata accessor",
     # Stale DerivedData/Tuist cache breaks an SPM package's generated module map (e.g. cmark-gfm),
     # interrupting the test action before it starts. Matched both with and without the shell-style
