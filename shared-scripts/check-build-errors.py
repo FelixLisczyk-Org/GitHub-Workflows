@@ -304,8 +304,35 @@ def regenerate_project_without_binary_cache():
     return 0
 
 
+def materialize_package_checkouts():
+    """Make every later `tuist install` in this job write private package checkouts.
+
+    With swifterpm enabled, `tuist install` turns each `Tuist/.build/checkouts/<Package>`
+    into a symlink to `~/.cache/swifterpm/sources/<package>/<version>`, a folder shared by
+    every checkout on the machine that resolves the same version. `tuist generate` then
+    writes checkout-specific files into that shared folder (for example
+    `Derived/FrameworkSearchPaths/<Package>.resp`), so another worktree generating at the
+    same time overwrites or deletes them mid-build. Deleting `Tuist/.build` alone cannot
+    recover from that, because the reinstall links straight back into the shared folder.
+    Deleting the shared folder is not allowed either: it would leave every other checkout
+    linked to it with broken symlinks (PL-377).
+
+    `TUIST_USE_SWIFTERPM=0` makes `tuist install` copy the sources into the checkout
+    instead. It is set for this process so the regeneration below honours it, and it is
+    written to `$GITHUB_ENV` so the retry's own installs (`install-dependencies.sh`,
+    `generate.sh`) do not relink the shared folders.
+    """
+    print("Disabling swifterpm so package checkouts are private to this workspace")
+    os.environ["TUIST_USE_SWIFTERPM"] = "0"
+    env_file_path = os.getenv("GITHUB_ENV")
+    if env_file_path:
+        with open(env_file_path, "a", encoding="utf-8") as f:
+            f.write("TUIST_USE_SWIFTERPM=0\n")
+
+
 def set_retry_after_project_regeneration():
     """Offer a retry only when project regeneration completed successfully."""
+    materialize_package_checkouts()
     regeneration_status = regenerate_project_without_binary_cache()
     if regeneration_status != 0:
         print(

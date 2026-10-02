@@ -108,8 +108,18 @@ def test_unrelated_patterns_still_match():
         check(handler is expected, f"{text[:52]!r} maps to {getattr(expected, '__name__', None)}")
 
 
-def recovery_outcome(handler, generate_script=None, with_tuist_manifest=False, failing_command=None):
-    """Run a recovery handler with shell commands captured instead of executed."""
+def recovery_outcome(
+    handler,
+    generate_script=None,
+    with_tuist_manifest=False,
+    failing_command=None,
+    with_environment=False,
+):
+    """Run a recovery handler with shell commands captured instead of executed.
+
+    With `with_environment`, also return the `TUIST_USE_SWIFTERPM` value each command
+    inherited and the text the handler appended to `$GITHUB_ENV`.
+    """
     root = tempfile.mkdtemp()
     if generate_script is not None:
         generate_path = os.path.join(root, "generate.sh")
@@ -126,9 +136,17 @@ def recovery_outcome(handler, generate_script=None, with_tuist_manifest=False, f
     original_system = cbe.os.system
     original_set_retry = getattr(cbe, "set_retry_build")
     original_cwd = os.getcwd()
+    original_swifterpm = os.environ.get("TUIST_USE_SWIFTERPM")
+    original_github_env = os.environ.get("GITHUB_ENV")
+    github_env = os.path.join(root, "github_env")
+    os.environ.pop("TUIST_USE_SWIFTERPM", None)
+    os.environ["GITHUB_ENV"] = github_env
+
+    swifterpm_by_command = {}
 
     def fake_system(command):
         commands.append(command)
+        swifterpm_by_command[command] = os.environ.get("TUIST_USE_SWIFTERPM")
         return 1 if command == failing_command else 0
 
     def fake_set_retry_build():
@@ -147,7 +165,18 @@ def recovery_outcome(handler, generate_script=None, with_tuist_manifest=False, f
         os.chdir(original_cwd)
         cbe.os.system = original_system
         setattr(cbe, "set_retry_build", original_set_retry)
-    return commands, retried, exit_code
+        for name, value in (("TUIST_USE_SWIFTERPM", original_swifterpm), ("GITHUB_ENV", original_github_env)):
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+    if not with_environment:
+        return commands, retried, exit_code
+    github_env_text = ""
+    if os.path.exists(github_env):
+        with open(github_env, encoding="utf-8") as handle:
+            github_env_text = handle.read()
+    return commands, retried, exit_code, swifterpm_by_command, github_env_text
 
 
 def test_recovery_regenerates_without_warming_binary_cache():
@@ -190,6 +219,35 @@ def test_recovery_regenerates_without_warming_binary_cache():
         )
         check(retried is True, f"{label}; successful regeneration schedules a retry")
         check(exit_code is None, f"{label}; successful regeneration does not fail analysis")
+
+
+def test_tuist_state_recovery_materializes_package_checkouts():
+    """Both reinstalls, the recovery's and the retry's, must bypass the shared swifterpm sources."""
+    cases = [
+        (cbe.handle_derived_data_and_tuist_cache_error, "executable", False, "./generate.sh --no-binary-cache"),
+        (cbe.handle_tuist_cache_error, "non-executable", True, "tuist install && tuist generate --no-open"),
+    ]
+    for handler, generate_script, with_manifest, install_command in cases:
+        label = handler.__name__
+        _commands, retried, _exit, swifterpm_by_command, github_env_text = recovery_outcome(
+            handler,
+            generate_script,
+            with_manifest,
+            with_environment=True,
+        )
+        check(
+            swifterpm_by_command.get(install_command) == "0",
+            f"{label}; the recovery's own install runs with swifterpm disabled",
+        )
+        check(
+            "TUIST_USE_SWIFTERPM=0\n" in github_env_text,
+            f"{label}; $GITHUB_ENV disables swifterpm for the retry's installs",
+        )
+        check(retried is True, f"{label}; the retry is still scheduled")
+        check(
+            all(".cache/swifterpm" not in command for command in swifterpm_by_command),
+            f"{label}; the machine-wide swifterpm sources are never deleted",
+        )
 
 
 def test_failed_regeneration_refuses_retry():
@@ -779,6 +837,7 @@ def test_non_xcresult_entries_are_not_probed():
 test_pattern_precision()
 test_unrelated_patterns_still_match()
 test_recovery_regenerates_without_warming_binary_cache()
+test_tuist_state_recovery_materializes_package_checkouts()
 test_failed_regeneration_refuses_retry()
 test_simulator_recovery_is_device_scoped()
 test_simulator_recovery_refuses_ticket_devices()
