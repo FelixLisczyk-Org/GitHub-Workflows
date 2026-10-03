@@ -35,9 +35,19 @@ runs:
         /bin/rm -f "$identity_file"
         echo "XCODE_BUILD_APP_IDENTITY_FILE=$identity_file" >> "$GITHUB_ENV"
       shell: bash -leo pipefail {0}
+    # swifterpm turns `Tuist/.build/checkouts/<Package>` into symlinks to machine-wide
+    # `~/.cache/swifterpm/sources` folders, and `tuist generate` writes checkout-specific files
+    # such as `Derived/FrameworkSearchPaths/<Package>.resp` into them. Any other worktree on the
+    # runner that generates the same package version can then delete or rewrite those files in
+    # the middle of this build. Exporting the opt-out for the whole job keeps every install here,
+    # including the ones Fastlane runs (`install-dependencies.sh`, `generate.sh`), private to
+    # this workspace instead of only the first command of the step below.
+    - name: Use Private Package Checkouts
+      run: echo "TUIST_USE_SWIFTERPM=0" >> "$GITHUB_ENV"
+      shell: bash -leo pipefail {0}
     - name: Resolve Swift Package Dependencies
       if: ${{ inputs.update_deps == 'true' }}
-      run: TUIST_USE_SWIFTERPM=0 tuist install --update --quiet && tuist install
+      run: tuist install --update --quiet && tuist install
       shell: bash -leo pipefail {0}
     # Each invocation is preceded by a scope marker so the analysis steps below read only
     # the logs it writes. Every platform step in the job shares one `log` directory.
