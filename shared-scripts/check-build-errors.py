@@ -693,9 +693,13 @@ def main():
     if test_failures:
         process_errors([failure["message"] for failure in test_failures])
 
+    # Not every failing step writes to log/: gym runs `xcodebuild -exportArchive` without a
+    # build log, and uploads run outside xcodebuild entirely. Their errors only appear in the
+    # Fastlane output, so don't claim the failure happened outside xcodebuild.
     print(
-        "No retryable error found in the logs of failed xcodebuild invocations. The failure "
-        "happened outside them (for example in a Fastlane upload step), which a retry cannot fix."
+        "No retryable error found in the build logs and result bundles written by this step. "
+        "Steps that write neither (such as gym's archive export or an App Store upload) cannot be "
+        "classified here; see the Fastlane output above for the actual error. Not retrying."
     )
 
 
