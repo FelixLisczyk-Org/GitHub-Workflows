@@ -753,6 +753,37 @@ def test_infrastructure_test_failure_still_retries():
     )
 
 
+PASSING_TEST_LOG = (
+    "2026-10-02 19:35:30.829092+0200 xctest[63570:138818009] [persistence] "
+    "Persistent store service connection interrupted.\n"
+    "Test Suite 'All tests' passed.\n"
+    "** TEST SUCCEEDED **\n"
+)
+
+
+def test_successful_invocation_log_is_not_analysed():
+    """OS chatter in the log of a passing xcodebuild run must not trigger a retry."""
+    root = make_log_dir([("SnipNotesApp-SnipNotes (macOS).log", PASSING_TEST_LOG, 0)])
+    check(
+        run_main(root, scope_epoch=time.time() - 60, test_plan_result="Passed") is False,
+        "a passing test log's 'connection interrupted' line does not start a retry",
+    )
+
+    failing = PASSING_TEST_LOG.replace("** TEST SUCCEEDED **", "** TEST FAILED **")
+    root = make_log_dir([("SnipNotesApp-SnipNotes (macOS).log", failing, 0)])
+    check(
+        run_main(root, scope_epoch=time.time() - 60, test_plan_result="Passed") is True,
+        "the same line in a failed invocation's log is still analysed",
+    )
+
+    archive_failed = PASSING_TEST_LOG + "** ARCHIVE FAILED **\n"
+    root = make_log_dir([("SnipNotesApp-SnipNotes (Beta).log", archive_failed, 0)])
+    check(
+        run_main(root, scope_epoch=time.time() - 60, test_plan_result="Passed") is True,
+        "a log with any failed action is analysed even if an earlier action succeeded",
+    )
+
+
 def test_xcresult_bundle_mtime_uses_children():
     """An `.xcresult` is a directory, so its contents decide whether it is current."""
     import log_scope
@@ -855,6 +886,7 @@ test_scoping_keeps_current_invocation()
 test_genuine_test_failure_suppresses_retry()
 test_passed_test_plan_does_not_suppress_build_retry()
 test_infrastructure_test_failure_still_retries()
+test_successful_invocation_log_is_not_analysed()
 test_xcresult_bundle_mtime_uses_children()
 test_missing_log_directory_is_tolerated()
 test_malformed_scope_epoch_falls_back()

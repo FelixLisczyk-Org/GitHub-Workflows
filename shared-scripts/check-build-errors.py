@@ -521,6 +521,25 @@ def find_handler(text):
     return None, None
 
 
+# xcodebuild ends every action it completes with a banner such as `** TEST SUCCEEDED **`,
+# `** ARCHIVE SUCCEEDED **` or `** EXPORT FAILED **`.
+xcodebuild_succeeded_banner = re.compile(r"^\*\* [A-Z][A-Z -]* SUCCEEDED \*\*\s*$", re.MULTILINE)
+xcodebuild_failed_banner = re.compile(r"^\*\* [A-Z][A-Z -]* FAILED \*\*\s*$", re.MULTILINE)
+
+
+def xcodebuild_log_succeeded(text):
+    """Whether a build log records an xcodebuild invocation that completed successfully.
+
+    A successful invocation cannot explain the step's failure, yet its log is full of OS
+    chatter that matches the retry patterns. In one macOS release the tests passed, the
+    Fastlane upload crashed afterwards, and the analysis matched xctest's harmless
+    `[persistence] Persistent store service connection interrupted` line in the passing
+    test log as a simulator error, starting a retry that could never fix the upload.
+    A log without any banner (a crashed, killed or hung xcodebuild) is still analysed.
+    """
+    return bool(xcodebuild_succeeded_banner.search(text)) and not xcodebuild_failed_banner.search(text)
+
+
 def process_errors(error_messages):
     """Process error messages and handle the single highest-priority match."""
     # Accept both string and list input
@@ -660,7 +679,11 @@ def main():
     for path, name in entries:
         if name.endswith(".log"):
             with open(path, "r", encoding="utf-8", errors="replace") as log_file:
-                process_errors(log_file.read())
+                log_text = log_file.read()
+            if xcodebuild_log_succeeded(log_text):
+                print(f"Skipping {path}: the xcodebuild invocation it records succeeded.")
+                continue
+            process_errors(log_text)
         elif name.endswith(".xcresult"):
             process_errors(get_xcresult_errors(path))
 
@@ -669,6 +692,11 @@ def main():
     # abort, for the cases where the only trace of a flaky runner is the failure it produced.
     if test_failures:
         process_errors([failure["message"] for failure in test_failures])
+
+    print(
+        "No retryable error found in the logs of failed xcodebuild invocations. The failure "
+        "happened outside them (for example in a Fastlane upload step), which a retry cannot fix."
+    )
 
 
 if __name__ == "__main__":
