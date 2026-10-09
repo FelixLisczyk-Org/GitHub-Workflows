@@ -37,7 +37,16 @@ runs:
         # checkout's broad clean would remove project-local dependency state on persistent runners.
         # Reset tracked files normally, then remove every ignored/untracked path except it.
         git reset --hard
-        git clean -ffdx -e Tuist/.build
+        # A cancelled previous job's xcodebuild can still be finalizing its result bundle under
+        # log/ for a few seconds after the runner moves on, so files reappear while git clean
+        # deletes them ("Directory not empty"). Retry instead of killing processes machine-wide.
+        for attempt in 1 2 3 4 5 6; do
+          git clean -ffdx -e Tuist/.build && exit 0
+          echo "::warning::git clean attempt $attempt failed; a previous job may still be writing to the workspace. Retrying in 10s."
+          sleep 10
+        done
+        echo "::error::git clean kept failing; a leftover process is still writing to the workspace."
+        exit 1
       shell: bash -leo pipefail {0}
       if: contains(runner.workspace, '/Users/runner/') == false
     - name: (Local) Validate Tuist Dependency State
