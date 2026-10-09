@@ -49,11 +49,11 @@ inputs:
     description: "Pull request number to review (for manual workflow dispatches)"
     required: false
   provider:
-    description: "LLM provider name (e.g., fireworks-ai, anthropic, openai, openrouter, groq, ollama)"
+    description: "LLM provider name (e.g., anthropic, openai, openrouter, groq, ollama)"
     default: "openrouter"
   model:
     description: "Model identifier. For most providers: provider/model-id. For ollama: model-name:cloud (e.g. kimi-k2.6:cloud)"
-    default: "openrouter/deepseek/deepseek-v4.1-flash:floor"
+    default: "openrouter/anthropic/claude-haiku-5.5"
 
 runs:
   using: "composite"

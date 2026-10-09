@@ -22,7 +22,6 @@ echo "PR: #${PR_NUMBER}"
 
 # --- Map API key to provider-specific environment variable ---
 case "${PROVIDER}" in
-  fireworks-ai) export FIREWORKS_API_KEY="${API_KEY}" ;;
   anthropic)    export ANTHROPIC_API_KEY="${API_KEY}" ;;
   openai)       export OPENAI_API_KEY="${API_KEY}" ;;
   openrouter)   export OPENROUTER_API_KEY="${API_KEY}" ;;
@@ -173,10 +172,12 @@ elif [ "${PROVIDER}" = "openrouter" ]; then
     "openrouter": {
       "models": {
         "${OPENROUTER_MODEL}": {
-          "variants": {
-            "max": {
-              "reasoningEffort": "xhigh"
-            }
+          "options": {
+            "provider": {
+              "order": ["anthropic"],
+              "allow_fallbacks": false
+            },
+            "reasoningEffort": "high"
           }
         }
       }
@@ -184,38 +185,6 @@ elif [ "${PROVIDER}" = "openrouter" ]; then
   },
   "model": "openrouter/${OPENROUTER_MODEL}",
   "small_model": "openrouter/${OPENROUTER_MODEL}"
-}
-JSONEOF
-)
-elif [ "${PROVIDER}" = "fireworks-ai" ]; then
-  FIREWORKS_MODEL="${MODEL#fireworks-ai/}"
-
-  export OPENCODE_CONFIG_CONTENT=$(cat <<JSONEOF
-{
-  "\$schema": "https://opencode.ai/config.json",
-  "agent": {
-    "title": {
-      "disable": true
-    }
-  },
-  "tools": {
-    "bash": false
-  },
-  "provider": {
-    "fireworks-ai": {
-      "models": {
-        "${FIREWORKS_MODEL}": {
-          "variants": {
-            "max": {
-              "reasoningEffort": "xhigh"
-            }
-          }
-        }
-      }
-    }
-  },
-  "model": "fireworks-ai/${FIREWORKS_MODEL}",
-  "small_model": "fireworks-ai/${FIREWORKS_MODEL}"
 }
 JSONEOF
 )
@@ -279,7 +248,6 @@ for attempt in $(seq 1 "${MAX_REVIEW_ATTEMPTS}"); do
   : > "${STDERR_FILE}"
 
   opencode run \
-    --variant max \
     "${REVIEW_PROMPT}" \
     > "${REVIEW_FILE}" 2>"${STDERR_FILE}" || true
 
