@@ -108,6 +108,21 @@ def test_unrelated_patterns_still_match():
         check(handler is expected, f"{text[:52]!r} maps to {getattr(expected, '__name__', None)}")
 
 
+def test_derived_data_copy_error_clears_derived_data():
+    """A build-system copy into a vanished DerivedData path retries after clearing DerivedData."""
+    copy_error = (
+        "error: copy(/Users/felix/Library/Developer/Xcode/DerivedData/TelemetryViewer-abc/Build/"
+        "Intermediates.noindex/LogKit.build/Debug/LogKit.build/module.modulemap, "
+        "/Users/felix/Library/Developer/Xcode/DerivedData/TelemetryViewer-abc/Build/Products/Debug/"
+        "LogKit.framework/Versions/A/Modules/module.modulemap): No such file or directory (2)"
+    )
+    _, handler = cbe.find_handler(copy_error)
+    check(handler is cbe.handle_derived_data_error, "DerivedData copy failure clears DerivedData")
+
+    _, handler = cbe.find_handler(OS_NOISE)
+    check(handler is None, "the copy pattern does not match benign xctest chatter")
+
+
 def recovery_outcome(
     handler,
     generate_script=None,
@@ -867,6 +882,7 @@ def test_non_xcresult_entries_are_not_probed():
 
 test_pattern_precision()
 test_unrelated_patterns_still_match()
+test_derived_data_copy_error_clears_derived_data()
 test_recovery_regenerates_without_warming_binary_cache()
 test_tuist_state_recovery_materializes_package_checkouts()
 test_failed_regeneration_refuses_retry()

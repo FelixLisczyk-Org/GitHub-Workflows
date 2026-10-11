@@ -26,12 +26,21 @@ import sys
 from log_scope import LOG_DIR, scoped_log_entries
 from xcresult_failures import format_test_identifier, get_test_failures, get_test_results, truncate_message
 
+# The build system's own file copy failing because a path in DerivedData vanished, e.g.
+# `error: copy(<DerivedData>/.../LogKit.build/module.modulemap, <DerivedData>/.../LogKit.framework/
+# Versions/A/Modules/module.modulemap): No such file or directory (2)`. Seen when stale-file
+# removal in a persistent DerivedData directory deleted a framework wrapper while the same build
+# was copying into it. Unlike `missing_build_input_error`, the errno follows the closing paren
+# instead of a colon and a path, so that pattern doesn't catch it.
+derived_data_copy_error = re.compile(r"\bcopy\(\S.*\):\s*no such file or directory", re.IGNORECASE)
+
 clear_derived_data_errors = [
     "Underlying Error: Test crashed with signal abrt before starting test execution.",
     "compiled with an older version of the compiler",  # Compiler version too new
     "cannot be imported by the Swift",  # Compiler version too old, e.g. 'Module compiled with Swift 6.2 cannot be imported by the Swift 6.1.2 compiler'
     "mtime changed",  # Stale module cache after Xcode update
     "tapi error: missing required architecture",  # Stale TBD file in EagerLinkingTBDs missing architecture slice
+    derived_data_copy_error,  # Build-system copy into a framework wrapper deleted mid-build
 ]
 
 # A compiler or linker diagnostic naming a build input that is missing from DerivedData,
