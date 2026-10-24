@@ -120,6 +120,8 @@ echo "Context file: $(wc -c < "${CONTEXT_FILE}") bytes"
 # --- Configure OpenCode ---
 export OPENCODE_DISABLE_PROJECT_CONFIG=true
 export OPENCODE_DISABLE_AUTOUPDATE=true
+# Keep headless reviews out of Clover so they do not trigger waiting notifications.
+export CLOVER_SKIP_SESSION=1
 
 # Disable session-title generation so headless reviews do not make an auxiliary
 # model request. Pin the small model to the review model as a fallback in case
