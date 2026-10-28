@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Covers `prepare-xcode-build/scripts/wait-for-idle-workspace.sh`: the clean step
 # waits for a cancelled job's leftover `xcodebuild` to leave the workspace instead
-# of racing it, and fails with the processes named when it never does.
+# of racing it, and fails with the processes named when it never does. Other
+# processes in the workspace, such as the runner hook's `caffeinate`, never hold it.
 set -u -o pipefail
 
 ACTION_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -73,8 +74,9 @@ assert_not_contains() {
   }
 }
 
-# The fake always lists the script's own process, an unrelated one and one in a
-# sibling directory sharing the workspace prefix; none of them may hold the step.
+# The fake always lists a `caffeinate` and an `xcodebuild-helper` in the workspace
+# and an `xcodebuild` in a sibling directory sharing the workspace prefix; none of
+# them may hold the step.
 test_idle_workspace_returns_immediately() {
   setup
   run_script 0 60
@@ -84,6 +86,8 @@ test_idle_workspace_returns_immediately() {
     exit 1
   }
   assert_not_contains "${RUN_OUTPUT}" "::warning::" "an idle workspace produced a warning"
+  assert_not_contains "${RUN_OUTPUT}" "424240" "the runner hook's caffeinate held the step"
+  assert_not_contains "${RUN_OUTPUT}" "424243" "a process merely prefixed xcodebuild held the step"
 
   teardown
   printf 'ok - an idle workspace does not wait\n'
