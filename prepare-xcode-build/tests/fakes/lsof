@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Stand-in for `lsof -a -d cwd -F pRcn`, printing the working directories of a
+# fixed set of processes in lsof's field format.
+#
+# Every call lists the caller's ancestry (inside the workspace), an unrelated
+# process, and one whose directory only shares the workspace path as a prefix.
+# The first `FAKE_LSOF_BUSY_CALLS` calls also list a leftover `xcodebuild`
+# inside the workspace; a negative value lists it on every call.
+set -uo pipefail
+
+: "${FAKE_LSOF_STATE_DIR:?FAKE_LSOF_STATE_DIR is required}"
+: "${FAKE_LSOF_WORKSPACE:?FAKE_LSOF_WORKSPACE is required}"
+busy_calls="${FAKE_LSOF_BUSY_CALLS:-0}"
+
+mkdir -p "${FAKE_LSOF_STATE_DIR}"
+calls_file="${FAKE_LSOF_STATE_DIR}/calls"
+calls=$(($(cat "${calls_file}" 2>/dev/null || echo 0) + 1))
+echo "${calls}" >"${calls_file}"
+
+print_process() {
+  printf 'p%s\nR%s\nc%s\nfcwd\nn%s\n' "$1" "$2" "$3" "$4"
+}
+
+# The caller's whole ancestry, as real lsof would list it: the script under test
+# forks subshells inside the workspace and must skip them via these parent links.
+pid=$$
+while [[ -n "${pid}" && "${pid}" -gt 1 ]]; do
+  ppid=$(ps -o ppid= -p "${pid}" | tr -d ' ')
+  print_process "${pid}" "${ppid}" bash "${FAKE_LSOF_WORKSPACE}"
+  pid=${ppid}
+done
+print_process 424240 1 Finder "/Users/felix"
+print_process 424241 1 xcodebuild "${FAKE_LSOF_WORKSPACE}-other"
+if ((busy_calls < 0 || calls <= busy_calls)); then
+  print_process 424242 1 xcodebuild "${FAKE_LSOF_WORKSPACE}/log"
+fi

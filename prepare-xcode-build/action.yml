@@ -37,9 +37,12 @@ runs:
         # checkout's broad clean would remove project-local dependency state on persistent runners.
         # Reset tracked files normally, then remove every ignored/untracked path except it.
         git reset --hard
-        # A cancelled previous job's xcodebuild can still be finalizing its result bundle under
-        # log/ for a few seconds after the runner moves on, so files reappear while git clean
-        # deletes them ("Directory not empty"). Retry instead of killing processes machine-wide.
+        # A cancelled previous job's xcodebuild can keep testing in this workspace and write its
+        # result bundle under log/ minutes later, after git clean has already succeeded. Wait for
+        # it to exit instead of killing processes machine-wide.
+        "${{ github.action_path }}/scripts/wait-for-idle-workspace.sh"
+        # Its result bundle can still be finalizing for a few seconds after it exits, so files
+        # reappear while git clean deletes them ("Directory not empty"). Retry for that window.
         for attempt in 1 2 3 4 5 6; do
           git clean -ffdx -e Tuist/.build && exit 0
           echo "::warning::git clean attempt $attempt failed; a previous job may still be writing to the workspace. Retrying in 10s."
