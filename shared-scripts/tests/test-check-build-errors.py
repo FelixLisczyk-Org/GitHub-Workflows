@@ -123,6 +123,27 @@ def test_derived_data_copy_error_clears_derived_data():
     check(handler is None, "the copy pattern does not match benign xctest chatter")
 
 
+def test_build_database_error_clears_derived_data():
+    """A damaged XCBuildData build database retries after clearing DerivedData."""
+    database_error = (
+        'error: accessing build database "/Users/felix/Library/Developer/Xcode/DerivedData/'
+        'SnipNotes-Source-d8b1190d0ee6/Build/Intermediates.noindex/XCBuildData/build.db": disk I/O error'
+    )
+    _, handler = cbe.find_handler(database_error)
+    check(handler is cbe.handle_derived_data_error, "build database I/O error clears DerivedData")
+
+    inconsistency_error = (
+        "The build service has encountered an internal inconsistency error: unexpected incomplete "
+        "target: target-AdServicesKit-832c73d5-SDKROOT:watchsimulator:SDK_VARIANT:watchsimulator "
+        "(started: 7, completed: 5)"
+    )
+    _, handler = cbe.find_handler(inconsistency_error)
+    check(handler is cbe.handle_derived_data_error, "incomplete-target inconsistency clears DerivedData")
+
+    _, handler = cbe.find_handler("[logging-persist] cannot open file at line 51044: disk I/O error")
+    check(handler is None, "an unrelated SQLite I/O error does not match the build database pattern")
+
+
 def recovery_outcome(
     handler,
     generate_script=None,
@@ -883,6 +904,7 @@ def test_non_xcresult_entries_are_not_probed():
 test_pattern_precision()
 test_unrelated_patterns_still_match()
 test_derived_data_copy_error_clears_derived_data()
+test_build_database_error_clears_derived_data()
 test_recovery_regenerates_without_warming_binary_cache()
 test_tuist_state_recovery_materializes_package_checkouts()
 test_failed_regeneration_refuses_retry()

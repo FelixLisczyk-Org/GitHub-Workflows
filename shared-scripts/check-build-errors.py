@@ -34,6 +34,17 @@ from xcresult_failures import format_test_identifier, get_test_failures, get_tes
 # instead of a colon and a path, so that pattern doesn't catch it.
 derived_data_copy_error = re.compile(r"\bcopy\(\S.*\):\s*no such file or directory", re.IGNORECASE)
 
+# The build system cannot read or write its SQLite build database in DerivedData, e.g.
+# `error: accessing build database "<DerivedData>/Build/Intermediates.noindex/XCBuildData/build.db":
+# disk I/O error`. Seen in a persistent DerivedData directory whose database was left damaged by
+# an earlier interrupted build; the build then also reports `The build service has encountered an
+# internal inconsistency error: unexpected incomplete target`, because it could not record the
+# target's completion. Deleting DerivedData discards the database so the retry starts clean.
+build_database_error = re.compile(
+    r"accessing build database\s+\S.*:\s*(disk I/O error|database disk image is malformed)",
+    re.IGNORECASE,
+)
+
 clear_derived_data_errors = [
     "Underlying Error: Test crashed with signal abrt before starting test execution.",
     "compiled with an older version of the compiler",  # Compiler version too new
@@ -41,6 +52,8 @@ clear_derived_data_errors = [
     "mtime changed",  # Stale module cache after Xcode update
     "tapi error: missing required architecture",  # Stale TBD file in EagerLinkingTBDs missing architecture slice
     derived_data_copy_error,  # Build-system copy into a framework wrapper deleted mid-build
+    build_database_error,  # Damaged XCBuildData/build.db in a persistent DerivedData directory
+    "internal inconsistency error: unexpected incomplete target",  # Build database lost track of a target
 ]
 
 # A compiler or linker diagnostic naming a build input that is missing from DerivedData,
