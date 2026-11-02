@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${FAKE_GH_SCENARIO:?FAKE_GH_SCENARIO is required}"
+: "${FAKE_GH_STATE_DIR:?FAKE_GH_STATE_DIR is required}"
+
+mkdir -p "${FAKE_GH_STATE_DIR}"
+printf '%s\n' "$*" >>"${FAKE_GH_STATE_DIR}/calls.log"
+
+if [[ "${1:-}" != "api" ]]; then
+  printf 'fake gh only supports gh api\n' >&2
+  exit 2
+fi
+shift
+
+endpoint=""
+accept=""
+query=""
+while (( $# > 0 )); do
+  case "$1" in
+    -X|--method) shift ;;
+    -H)
+      shift
+      accept=$1
+      ;;
+    -f)
+      shift
+      [[ "$1" == q=* ]] && query=${1#q=}
+      ;;
+    --paginate) ;;
+    *) endpoint=$1 ;;
+  esac
+  shift
+done
+
+commit_item() {
+  local repo=$1 sha=$2 date=$3 message=$4
+  jq -n --arg repo "${repo}" --arg sha "${sha}" --arg date "${date}" --arg message "${message}" \
+    '{sha: $sha, repository: {name: ($repo | split("/")[1]), full_name: $repo},
+      commit: {message: $message, committer: {date: $date}}}'
+}
+
+search_response() {
+  case "${FAKE_GH_SCENARIO}" in
+    none)
+      printf '{"total_count":0,"items":[]}\n'
+      ;;
+    search-fails)
+      printf 'HTTP 422: Validation Failed\n' >&2
+      exit 1
+      ;;
+    *)
+      jq -s '{total_count: length, items: .}' <(
+        commit_item example/FileKit bbbb2222bbbb2222 2026-10-31T20:00:00Z $'Keep metadata\n\nRef SX-914'
+        commit_item example/FileKit aaaa1111aaaa1111 2026-10-30T10:00:00Z $'Replace payloads\n\nRef SX-914'
+        commit_item example/App cccc3333cccc3333 2026-11-01T10:00:00Z 'SX-914: App change'
+        commit_item example/OtherKit dddd4444dddd4444 2026-10-29T10:00:00Z $'Unrelated\n\nRef SX-9140'
+      )
+      ;;
+  esac
+}
+
+repos_response() {
+  case "${FAKE_GH_SCENARIO}" in
+    none)
+      printf '[{"name":"App","full_name":"example/App","default_branch":"main","archived":false}]\n'
+      ;;
+    *)
+      cat <<'JSON'
+[
+  {"name":"App","full_name":"example/App","default_branch":"main","archived":false},
+  {"name":"FileKit","full_name":"example/FileKit","default_branch":"main","archived":false},
+  {"name":"BranchKit","full_name":"example/BranchKit","default_branch":"trunk","archived":false},
+  {"name":"NoiseKit","full_name":"example/NoiseKit","default_branch":"main","archived":false},
+  {"name":"OldKit","full_name":"example/OldKit","default_branch":"main","archived":true}
+]
+JSON
+      ;;
+  esac
+}
+
+tarball_response() {
+  local repo=$1
+  local source="${FAKE_GH_STATE_DIR}/tarball-src/${repo}-abc123"
+  rm -rf "${FAKE_GH_STATE_DIR}/tarball-src"
+  mkdir -p "${source}/Sources"
+  printf 'struct %s {}\n' "${repo}" >"${source}/Sources/${repo}.swift"
+  tar -czf - -C "${FAKE_GH_STATE_DIR}/tarball-src" "${repo}-abc123"
+}
+
+case "${endpoint}" in
+  search/commits)
+    printf '%s\n' "${query}" >"${FAKE_GH_STATE_DIR}/search-query"
+    search_response
+    ;;
+  orgs/example/repos*)
+    repos_response
+    ;;
+  repos/example/BranchKit/git/matching-refs/heads/sx-914)
+    printf '[{"ref":"refs/heads/sx-914-fix"}]\n'
+    ;;
+  repos/example/NoiseKit/git/matching-refs/heads/sx-914)
+    printf '[{"ref":"refs/heads/sx-9140"}]\n'
+    ;;
+  repos/example/*/git/matching-refs/heads/*)
+    printf '[]\n'
+    ;;
+  repos/example/*/commits/*|repos/example/*/compare/*)
+    [[ "${accept}" == "Accept: application/vnd.github.diff" ]] || { printf 'missing diff accept header\n' >&2; exit 1; }
+    if [[ "${FAKE_GH_SCENARIO}" == "large-diff" ]]; then
+      printf 'diff --git a/Big.swift b/Big.swift\n+%s\n' "$(printf 'x%.0s' $(seq 1 500))"
+    else
+      printf 'diff --git a/Sources/File.swift b/Sources/File.swift\n+// change from %s\n' "${endpoint}"
+    fi
+    ;;
+  repos/example/*/tarball/*)
+    repo=${endpoint#repos/example/}
+    tarball_response "${repo%%/*}"
+    ;;
+  *)
+    printf 'unexpected endpoint %s\n' "${endpoint}" >&2
+    exit 1
+    ;;
+esac

@@ -21,6 +21,18 @@ description: Run AI-powered code review on pull requests using OpenCode
 #           env:
 #             GH_TOKEN: ${{ github.token }}
 #
+# To include package changes made for the same ticket (commits on a package's
+# default branch that reference the ticket ID, or an unmerged branch named after
+# the ticket), pass a token that can read the owner's other repositories. The
+# ticket ID comes from the PR title ("SX-914: ...") or branch name ("sx-914"):
+#
+#         - uses: <org>/GitHub-Workflows/ai-code-review@main
+#           with:
+#             api_key: ${{ secrets.OPENROUTER_API_KEY }}
+#             token: ${{ secrets.REPO_ACCESS_TOKEN }}
+#           env:
+#             GH_TOKEN: ${{ github.token }}
+#
 # To use a different provider:
 #
 #         - uses: <org>/GitHub-Workflows/ai-code-review@main
@@ -48,6 +60,10 @@ inputs:
   pr_number:
     description: "Pull request number to review (for manual workflow dispatches)"
     required: false
+  token:
+    description: "Token that can read the owner's other repositories. Enables reviewing package changes made for the PR's ticket; omit to review the app diff alone"
+    required: false
+    default: ""
   provider:
     description: "LLM provider name (e.g., anthropic, openai, openrouter, groq, ollama)"
     default: "openrouter"
@@ -85,6 +101,7 @@ runs:
         PROVIDER: ${{ inputs.provider }}
         MODEL: ${{ inputs.model }}
         API_KEY: ${{ inputs.api_key }}
+        PACKAGES_TOKEN: ${{ inputs.token }}
         PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number }}
         ACTION_PATH: ${{ github.action_path }}
 

@@ -8,12 +8,15 @@ set -euo pipefail
 : "${PROVIDER:?PROVIDER is required}"
 : "${ACTION_PATH:?ACTION_PATH is required}"
 
-# Mask the key in logs even if the caller did not pass it via secrets.*
+# Mask the keys in logs even if the caller did not pass them via secrets.*
 echo "::add-mask::${API_KEY}"
+if [ -n "${PACKAGES_TOKEN:-}" ]; then
+  echo "::add-mask::${PACKAGES_TOKEN}"
+fi
 
 # Remove workspace files and temp files on any exit so a failed run does not
 # leave PR content behind (relevant on self-hosted runners).
-trap 'rm -f "${CONTEXT_FILE:-}" "${GUIDELINES_FILE:-}" "${REVIEW_FILE:-}" "${REVIEW_FILE:+${REVIEW_FILE}.trimmed}" "${STDERR_FILE:-}"' EXIT
+trap 'rm -f "${CONTEXT_FILE:-}" "${GUIDELINES_FILE:-}" "${REVIEW_FILE:-}" "${REVIEW_FILE:+${REVIEW_FILE}.trimmed}" "${STDERR_FILE:-}"; [ -z "${PACKAGES_DIR:-}" ] || rm -rf "${PACKAGES_DIR}"' EXIT
 
 echo "::group::AI Code Review Setup"
 echo "Provider: ${PROVIDER}"
@@ -93,6 +96,46 @@ PR_BODY=$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --json body --
 
 echo "::endgroup::"
 
+# --- Collect package changes made for the same ticket ---
+# App PRs often only bump a package pin while the real change lives in the
+# package repository. Find those changes by ticket ID so the review covers them.
+PACKAGE_CONTEXT=""
+WORKSPACE_PACKAGES_DIR=".ai-review-packages"
+if [ -n "${PACKAGES_TOKEN:-}" ]; then
+  echo "::group::Collecting Package Changes"
+  # Ticket PRs are titled "SX-914: ..." and branched as "sx-914". Only a
+  # leading ID counts, so "Fix UTF-8 handling" is not mistaken for a ticket.
+  PR_TITLE=$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --json title --jq '.title' 2>/dev/null || true)
+  PR_BRANCH=$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --json headRefName --jq '.headRefName' 2>/dev/null || true)
+  TICKET_ID=$(printf '%s\n' "${PR_TITLE}" | grep -Eo '^[A-Z][A-Z0-9]*-[0-9]+' || true)
+  if [ -z "${TICKET_ID}" ]; then
+    TICKET_ID=$(printf '%s\n' "${PR_BRANCH}" | grep -Eio '^[A-Z][A-Z0-9]*-[0-9]+' | tr '[:lower:]' '[:upper:]' || true)
+  fi
+
+  if [ -z "${TICKET_ID}" ]; then
+    echo "No ticket ID in the PR title or branch name. Skipping package lookup."
+  else
+    echo "Looking up package changes for ${TICKET_ID}..."
+    PACKAGES_DIR="${GITHUB_WORKSPACE}/${WORKSPACE_PACKAGES_DIR}"
+    PACKAGE_CONTEXT=$(
+      GH_TOKEN="${PACKAGES_TOKEN}" \
+      OWNER="${GITHUB_REPOSITORY%%/*}" \
+      CURRENT_REPO="${GITHUB_REPOSITORY}" \
+      TICKET_ID="${TICKET_ID}" \
+      PACKAGES_DIR="${PACKAGES_DIR}" \
+      PACKAGES_DISPLAY_DIR="${WORKSPACE_PACKAGES_DIR}" \
+        "${ACTION_PATH}/scripts/collect-package-changes.sh"
+    ) || {
+      echo "::warning::Package lookup failed. Reviewing the app diff alone."
+      PACKAGE_CONTEXT=""
+    }
+    [ -n "${PACKAGE_CONTEXT}" ] && echo "Package context: ${#PACKAGE_CONTEXT} chars"
+  fi
+  echo "::endgroup::"
+else
+  echo "No token provided. Skipping package lookup."
+fi
+
 # --- Write PR context to workspace file for OpenCode to read ---
 CONTEXT_FILE="${GITHUB_WORKSPACE}/.ai-review-context.md"
 cat > "${CONTEXT_FILE}" <<CTXEOF
@@ -110,6 +153,9 @@ ${LINEAR_CONTEXT:-No Linear ticket context found in PR comments. Proceed with re
 \`\`\`diff
 ${DIFF}
 \`\`\`
+
+### Package Changes for This Ticket
+${PACKAGE_CONTEXT:-No package changes found for this ticket.}
 CTXEOF
 
 # Copy guidelines into workspace so OpenCode can read without external_directory permission
@@ -237,7 +283,7 @@ echo "::endgroup::"
 # tool call cuts the turn short. Both cases are incomplete turns, so an attempt
 # only counts as successful once the review headline is present. Retry a few
 # times before giving up so a single incomplete turn doesn't waste the run.
-REVIEW_PROMPT="You are performing an AI code review on a pull request. Read the file at ${WORKSPACE_CONTEXT_FILE} for the PR description, ticket context, and diff. Read the file at ${WORKSPACE_GUIDELINES_FILE} for review guidelines and output format. Then: 1) For each changed file in the diff, use your read tools to explore surrounding code for context. 2) Apply the review guidelines to identify issues. 3) Output ONLY the review Markdown in the format specified in the guidelines — no preamble. Only files inside the repository are readable; tool calls outside it are rejected. If a tool call fails, continue with the context you have and still emit the full review."
+REVIEW_PROMPT="You are performing an AI code review on a pull request. Read the file at ${WORKSPACE_CONTEXT_FILE} for the PR description, ticket context, diff, and any package changes made for the same ticket. Package source snapshots, if any, are under ${WORKSPACE_PACKAGES_DIR}/. Read the file at ${WORKSPACE_GUIDELINES_FILE} for review guidelines and output format. Then: 1) For each changed file in the app diff and the package diffs, use your read tools to explore surrounding code for context. 2) Apply the review guidelines to identify issues. 3) Output ONLY the review Markdown in the format specified in the guidelines — no preamble. Only files inside the repository are readable; tool calls outside it are rejected. If a tool call fails, continue with the context you have and still emit the full review."
 
 REVIEW_HEADLINE_PATTERN='^## AI Code Review'
 MAX_REVIEW_ATTEMPTS=3
