@@ -23,13 +23,28 @@ env_file="${GITHUB_ENV:?GITHUB_ENV is not set}"
 
 # `sort -V` compares the version numbers, so `Xcode-27.0.0-Beta-10` sorts after
 # `Xcode-27.0.0-Beta-9`; within a group the last entry is therefore the newest.
+#
+# A name match alone is not enough: other apps share the prefix (the Xcodes
+# version manager installs `/Applications/Xcodes.app`), and as the last entry in
+# sort order such an app would win the selection. Only bundles that contain a
+# developer directory count as Xcode installations.
 all_xcode_bundles() {
+  local bundle
   if [[ ! -d "$search_dir" ]]; then
     return 0
   fi
-  find "$search_dir" -maxdepth 1 \
-    \( -name "Xcode.app" -o -name "Xcode-*.app" -o -name "Xcode *.app" -o -name "Xcode*.app" \) \
-    2>/dev/null | sort -V || true
+  while IFS= read -r bundle; do
+    [[ -n "$bundle" ]] || continue
+    if [[ -d "$bundle/Contents/Developer" ]]; then
+      printf '%s\n' "$bundle"
+    else
+      echo "Notice: Skipping $bundle, it is not an Xcode installation: Contents/Developer is missing" >&2
+    fi
+  done < <(
+    find "$search_dir" -maxdepth 1 \
+      \( -name "Xcode.app" -o -name "Xcode-*.app" -o -name "Xcode *.app" \) \
+      2>/dev/null | sort -V || true
+  )
 }
 
 # Prints the selected bundle, or prints nothing when no bundle qualifies. Betas
@@ -71,10 +86,6 @@ fi
 # `xcode-select -s` accepted the bundle itself and appended `Contents/Developer`
 # internally; `DEVELOPER_DIR` has to name that directory outright.
 developer_dir="$xcode_bundle/Contents/Developer"
-if [[ ! -d "$developer_dir" ]]; then
-  echo "::error title=No Xcode found::$xcode_bundle is not an Xcode installation: $developer_dir is missing"
-  exit 1
-fi
 
 echo "Selecting Xcode: $xcode_bundle"
 echo "DEVELOPER_DIR=$developer_dir" >> "$env_file"

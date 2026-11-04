@@ -192,7 +192,32 @@ test_install_without_developer_directory_is_rejected() {
   run_script
   assert_status 1 || return 1
   assert_contains "Contents/Developer is missing" || return 1
+  assert_contains "No suitable Xcode version was found" || return 1
   assert_no_developer_dir || return 1
+  assert_no_machine_wide_switch
+}
+
+# The Xcodes version manager lives at `/Applications/Xcodes.app` and sorts after
+# `Xcode.app`, so it used to be picked as the newest stable Xcode.
+test_xcodes_version_manager_is_not_selected() {
+  make_xcode "Xcode.app" || return 1
+  make_bundle_without_developer_directory "Xcodes.app" || return 1
+
+  run_script
+  assert_status 0 || return 1
+  assert_developer_dir "${SEARCH_DIR}/Xcode.app/Contents/Developer" || return 1
+  assert_no_machine_wide_switch
+}
+
+# A broken bundle that sorts last must not hide a working installation before it.
+test_broken_newest_bundle_falls_back_to_working_one() {
+  make_xcode "Xcode-26.5.0.app" || return 1
+  make_bundle_without_developer_directory "Xcode-26.6.0.app" || return 1
+
+  run_script
+  assert_status 0 || return 1
+  assert_contains "Skipping ${SEARCH_DIR}/Xcode-26.6.0.app" || return 1
+  assert_developer_dir "${SEARCH_DIR}/Xcode-26.5.0.app/Contents/Developer" || return 1
   assert_no_machine_wide_switch
 }
 
@@ -233,6 +258,8 @@ main() {
     test_no_xcode_is_an_error
     test_missing_search_root_is_an_error
     test_install_without_developer_directory_is_rejected
+    test_xcodes_version_manager_is_not_selected
+    test_broken_newest_bundle_falls_back_to_working_one
     test_unrelated_applications_are_not_selected
     test_existing_env_file_contents_are_survived
   )
