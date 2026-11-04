@@ -144,6 +144,19 @@ def test_build_database_error_clears_derived_data():
     check(handler is None, "an unrelated SQLite I/O error does not match the build database pattern")
 
 
+def test_unresolved_module_error_clears_derived_data():
+    """A declared package module that cannot be resolved retries after clearing DerivedData."""
+    unresolved = (
+        "Unable to resolve module dependency: 'UserPreferenceKit' "
+        "(in target 'DeviceInfoKit' from project 'DeviceInfoKit')"
+    )
+    _, handler = cbe.find_handler(unresolved)
+    check(handler is cbe.handle_derived_data_error, "unresolved module dependency clears DerivedData")
+
+    _, handler = cbe.find_handler("Testing cancelled because the build failed.")
+    check(handler is None, "the follow-up 'build failed' summary alone does not match")
+
+
 def recovery_outcome(
     handler,
     generate_script=None,
@@ -905,6 +918,7 @@ test_pattern_precision()
 test_unrelated_patterns_still_match()
 test_derived_data_copy_error_clears_derived_data()
 test_build_database_error_clears_derived_data()
+test_unresolved_module_error_clears_derived_data()
 test_recovery_regenerates_without_warming_binary_cache()
 test_tuist_state_recovery_materializes_package_checkouts()
 test_failed_regeneration_refuses_retry()

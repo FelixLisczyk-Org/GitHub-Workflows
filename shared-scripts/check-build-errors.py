@@ -45,6 +45,14 @@ build_database_error = re.compile(
     re.IGNORECASE,
 )
 
+# A package module that is declared as a dependency cannot be found by the compiler, e.g.
+# `Unable to resolve module dependency: 'UserPreferenceKit' (in target 'DeviceInfoKit' from
+# project 'DeviceInfoKit')`. Seen in a persistent DerivedData directory after stale-file removal
+# failed on that module's framework (`cannot remove stale file '.../UserPreferenceKit.framework':
+# Directory not empty`) following a dependency bump, with no source change in the packages. A
+# genuinely missing dependency fails the same way after the retry, which is bounded.
+unresolved_module_error = re.compile(r"unable to resolve module dependency:\s*'[^']+'", re.IGNORECASE)
+
 clear_derived_data_errors = [
     "Underlying Error: Test crashed with signal abrt before starting test execution.",
     "compiled with an older version of the compiler",  # Compiler version too new
@@ -53,6 +61,7 @@ clear_derived_data_errors = [
     "tapi error: missing required architecture",  # Stale TBD file in EagerLinkingTBDs missing architecture slice
     derived_data_copy_error,  # Build-system copy into a framework wrapper deleted mid-build
     build_database_error,  # Damaged XCBuildData/build.db in a persistent DerivedData directory
+    unresolved_module_error,  # Half-removed module product in a persistent DerivedData directory
     "internal inconsistency error: unexpected incomplete target",  # Build database lost track of a target
 ]
 
