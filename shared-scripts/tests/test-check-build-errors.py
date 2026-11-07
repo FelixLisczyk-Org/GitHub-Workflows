@@ -157,6 +157,25 @@ def test_unresolved_module_error_clears_derived_data():
     check(handler is None, "the follow-up 'build failed' summary alone does not match")
 
 
+def test_stale_codesign_temp_clears_derived_data():
+    """A leftover `.cstemp` inside a bundle retries after clearing DerivedData, not plainly."""
+    products = "/Users/felix/Library/Developer/Xcode/DerivedData/SnipNotes-baehcxgqqsdgrncfxlkdmmolcucg/Build/Products/Debug"
+    codesign_log = (
+        f"CodeSign {products}/TagFeatureTests.xctest (in target 'TagFeatureTests' from project 'SnipNotes')\n"
+        f"{products}/TagFeatureTests.xctest: invalid or unsupported format for signature\n"
+        f"In subcomponent: {products}/TagFeatureTests.xctest/Contents/MacOS/TagFeatureTests.cstemp\n"
+        "Command CodeSign failed with a nonzero exit code\n"
+    )
+    _, handler = cbe.find_handler(codesign_log)
+    check(handler is cbe.handle_derived_data_error, "stale .cstemp codesign failure clears DerivedData")
+
+    _, handler = cbe.find_handler("Command CodeSign failed with a nonzero exit code")
+    check(handler is cbe.handle_regular_error, "a CodeSign failure without the .cstemp line stays a plain retry")
+
+    _, handler = cbe.find_handler(f"In subcomponent: {products}/Foo.app/Contents/Frameworks/Bar.framework")
+    check(handler is not cbe.handle_derived_data_error, "a subcomponent that is not a .cstemp does not match")
+
+
 def recovery_outcome(
     handler,
     generate_script=None,
@@ -645,11 +664,12 @@ def make_log_dir(entries):
     return root
 
 
-def run_main(root, scope_epoch, test_failures=None, test_plan_result="Failed"):
+def run_main(root, scope_epoch, test_failures=None, test_plan_result="Failed", xcresult_errors=None, commands=None):
     """Run `main()` in `root` and report whether it asked for a retry.
 
     Handlers are neutered so the destructive recovery commands never run, and the
-    xcresult reader is stubbed so the test needs no real bundle.
+    xcresult reader is stubbed so the test needs no real bundle. Pass `commands` to
+    collect the recovery commands a handler would have run.
     """
     recorded = {"retry": False}
 
@@ -667,12 +687,12 @@ def run_main(root, scope_epoch, test_failures=None, test_plan_result="Failed"):
     original_epoch = os.environ.pop("CI_LOG_SCOPE_EPOCH", original_epoch)
 
     cbe.set_retry_build = fake_set_retry_build
-    cbe.os.system = lambda *_args, **_kwargs: 0
+    cbe.os.system = lambda command, *_args, **_kwargs: (commands.append(command) if commands is not None else None) or 0
     cbe.get_test_failures = lambda _path: list(test_failures or [])
     cbe.get_test_results = lambda _path: {
         "testNodes": [{"nodeType": "Test Plan", "result": test_plan_result}]
     }
-    cbe.get_xcresult_errors = lambda _path: []
+    cbe.get_xcresult_errors = lambda _path: list(xcresult_errors or [])
     if scope_epoch is not None:
         os.environ["CI_LOG_SCOPE_EPOCH"] = str(scope_epoch)
 
@@ -694,6 +714,35 @@ def run_main(root, scope_epoch, test_failures=None, test_plan_result="Failed"):
             os.environ["CI_LOG_SCOPE_EPOCH"] = original_epoch
 
     return recorded["retry"]
+
+
+def test_build_log_diagnostic_outranks_earlier_xcresult_summary():
+    """The xcresult sorts first, but its bare summary must not pre-empt the log's diagnostic."""
+    products = "/Users/felix/Library/Developer/Xcode/DerivedData/SnipNotes-abc/Build/Products/Debug"
+    build_log = (
+        f"{products}/TagFeatureTests.xctest: invalid or unsupported format for signature\n"
+        f"In subcomponent: {products}/TagFeatureTests.xctest/Contents/MacOS/TagFeatureTests.cstemp\n"
+        "Command CodeSign failed with a nonzero exit code\n"
+        "** TEST FAILED **\n"
+    )
+    root = make_log_dir(
+        [
+            ("SnipNotes (macOS).xcresult", "", 0),
+            ("SnipNotes-SnipNotes (macOS).log", build_log, 0),
+        ]
+    )
+    commands = []
+    retried = run_main(
+        root,
+        scope_epoch=time.time() - 60,
+        xcresult_errors=["Command CodeSign failed with a nonzero exit code"],
+        commands=commands,
+    )
+    check(retried, "the stale .cstemp failure is retried")
+    check(
+        any("clear-xcode-derived-data.sh" in command for command in commands),
+        "the retry clears DerivedData although the xcresult summary is read first",
+    )
 
 
 def test_scoping_ignores_earlier_invocations():
@@ -919,6 +968,7 @@ test_unrelated_patterns_still_match()
 test_derived_data_copy_error_clears_derived_data()
 test_build_database_error_clears_derived_data()
 test_unresolved_module_error_clears_derived_data()
+test_stale_codesign_temp_clears_derived_data()
 test_recovery_regenerates_without_warming_binary_cache()
 test_tuist_state_recovery_materializes_package_checkouts()
 test_failed_regeneration_refuses_retry()
@@ -933,6 +983,7 @@ test_priority_is_global()
 test_frameless_runner_crash_retries()
 test_frameless_runner_crash_survives_prefixes()
 test_frameless_runner_crash_is_not_genuine()
+test_build_log_diagnostic_outranks_earlier_xcresult_summary()
 test_scoping_ignores_earlier_invocations()
 test_scoping_keeps_current_invocation()
 test_genuine_test_failure_suppresses_retry()

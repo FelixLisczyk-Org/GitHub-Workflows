@@ -53,6 +53,17 @@ build_database_error = re.compile(
 # genuinely missing dependency fails the same way after the retry, which is bounded.
 unresolved_module_error = re.compile(r"unable to resolve module dependency:\s*'[^']+'", re.IGNORECASE)
 
+# codesign rejects a bundle because its executable folder holds a `.cstemp` file, e.g.
+# `<DerivedData>/.../TagFeatureTests.xctest: invalid or unsupported format for signature`
+# followed by `In subcomponent: <DerivedData>/.../Contents/MacOS/TagFeatureTests.cstemp`.
+# codesign writes the re-signed executable to `<name>.cstemp` and renames it over the
+# original; a codesign that fails or is killed (a cancelled run) leaves the partial file
+# behind in a persistent DerivedData directory. Every later signing of that bundle then
+# trips over it, and a failing signing leaves a new one, so a plain retry against the same
+# DerivedData never recovers. Only the summary `Command CodeSign failed` reaches the
+# xcresult; this line is in the raw build log.
+stale_codesign_temp_error = re.compile(r"in subcomponent:\s*\S.*\.cstemp\b", re.IGNORECASE)
+
 clear_derived_data_errors = [
     "Underlying Error: Test crashed with signal abrt before starting test execution.",
     "compiled with an older version of the compiler",  # Compiler version too new
@@ -62,6 +73,7 @@ clear_derived_data_errors = [
     derived_data_copy_error,  # Build-system copy into a framework wrapper deleted mid-build
     build_database_error,  # Damaged XCBuildData/build.db in a persistent DerivedData directory
     unresolved_module_error,  # Half-removed module product in a persistent DerivedData directory
+    stale_codesign_temp_error,  # Leftover codesign temp file inside a bundle in DerivedData
     "internal inconsistency error: unexpected incomplete target",  # Build database lost track of a target
 ]
 
@@ -707,6 +719,10 @@ def main():
         report_genuine_test_failures(genuine_test_failures)
         return
 
+    # Classified together so priority stays global across entries: the xcresult sorts before
+    # the build log and only carries summaries such as `Command CodeSign failed`, which would
+    # otherwise win with a plain retry before the log's specific diagnostic is ever read.
+    messages = []
     for path, name in entries:
         if name.endswith(".log"):
             with open(path, "r", encoding="utf-8", errors="replace") as log_file:
@@ -714,9 +730,10 @@ def main():
             if xcodebuild_log_succeeded(log_text):
                 print(f"Skipping {path}: the xcodebuild invocation it records succeeded.")
                 continue
-            process_errors(log_text)
+            messages.append(log_text)
         elif name.endswith(".xcresult"):
-            process_errors(get_xcresult_errors(path))
+            messages.extend(get_xcresult_errors(path))
+    process_errors(messages)
 
     # Nothing in the build log or the error summaries explained the failure, but every test
     # failure above was classified as infrastructure. Analyse those messages too rather than
