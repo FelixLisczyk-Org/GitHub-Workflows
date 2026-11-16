@@ -35,7 +35,7 @@ runs:
     - name: Generate Xcode Project
       run: |
         if [ -f Tuist.swift ]; then
-          tuist install && tuist generate --no-open
+          tuist install && ${{ github.action_path }}/../shared-scripts/queued.sh tuist generate --no-open
         fi
       shell: bash -leo pipefail {0}
     - name: Run Unit Tests

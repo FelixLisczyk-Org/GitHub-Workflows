@@ -13,6 +13,7 @@ Run directly: `python3 shared-scripts/tests/test-check-build-errors.py`
 import importlib.util
 import json
 import os
+import shlex
 import sys
 import tempfile
 import time
@@ -32,6 +33,11 @@ def load_check_build_errors():
 
 
 cbe = load_check_build_errors()
+
+# Recovery regeneration builds, so it runs through the queue wrapper like the actions' commands.
+QUEUED = shlex.quote(os.path.join(SHARED_SCRIPTS, "queued.sh"))
+GENERATE_COMMAND = f"{QUEUED} ./generate.sh --no-binary-cache"
+TUIST_COMMAND = f"tuist install && {QUEUED} tuist generate --no-open"
 
 FAILURES = []
 CHECKS = 0
@@ -254,14 +260,14 @@ def test_recovery_regenerates_without_warming_binary_cache():
             cbe.handle_derived_data_and_tuist_cache_error,
             "executable",
             True,
-            "./generate.sh --no-binary-cache",
+            GENERATE_COMMAND,
             "derived-data recovery prefers executable generate.sh",
         ),
         (
             cbe.handle_tuist_cache_error,
             "non-executable",
             True,
-            "tuist install && tuist generate --no-open",
+            TUIST_COMMAND,
             "Tuist-state recovery falls back when generate.sh is not executable",
         ),
         (
@@ -276,7 +282,7 @@ def test_recovery_regenerates_without_warming_binary_cache():
         commands, retried, exit_code = recovery_outcome(handler, generate_script, with_manifest)
         if expected_command is None:
             check(
-                not any(command.startswith(("./generate.sh", "tuist install")) for command in commands),
+                not any("generate.sh" in command or "tuist install" in command for command in commands),
                 label,
             )
         else:
@@ -292,8 +298,8 @@ def test_recovery_regenerates_without_warming_binary_cache():
 def test_tuist_state_recovery_materializes_package_checkouts():
     """Both reinstalls, the recovery's and the retry's, must bypass the shared swifterpm sources."""
     cases = [
-        (cbe.handle_derived_data_and_tuist_cache_error, "executable", False, "./generate.sh --no-binary-cache"),
-        (cbe.handle_tuist_cache_error, "non-executable", True, "tuist install && tuist generate --no-open"),
+        (cbe.handle_derived_data_and_tuist_cache_error, "executable", False, GENERATE_COMMAND),
+        (cbe.handle_tuist_cache_error, "non-executable", True, TUIST_COMMAND),
     ]
     for handler, generate_script, with_manifest, install_command in cases:
         label = handler.__name__
@@ -325,14 +331,14 @@ def test_failed_regeneration_refuses_retry():
             cbe.handle_derived_data_and_tuist_cache_error,
             "executable",
             True,
-            "./generate.sh --no-binary-cache",
+            GENERATE_COMMAND,
             "generate.sh failure",
         ),
         (
             cbe.handle_tuist_cache_error,
             "non-executable",
             True,
-            "tuist install && tuist generate --no-open",
+            TUIST_COMMAND,
             "Tuist fallback failure",
         ),
     ]

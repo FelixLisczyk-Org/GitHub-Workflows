@@ -57,7 +57,7 @@ runs:
     - name: Build and Upload App
       id: build-app
       continue-on-error: true
-      run: bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} inc_version:${{ inputs.inc_version }} inc_build:${{ inputs.inc_build }} update_deps:${{ inputs.update_deps }} skip_publish:true skip_tests:${{ inputs.skip_tests }} clear_artifacts:false
+      run: ${{ github.action_path }}/../shared-scripts/queued.sh bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} inc_version:${{ inputs.inc_version }} inc_build:${{ inputs.inc_build }} update_deps:${{ inputs.update_deps }} skip_publish:true skip_tests:${{ inputs.skip_tests }} clear_artifacts:false
       shell: bash -leo pipefail {0}
     - name: Analyze Build Errors
       run: python3 ${{ github.action_path }}/../shared-scripts/check-build-errors.py
@@ -70,7 +70,7 @@ runs:
     - name: Build and Upload App (Retry 1)
       id: retry-build-app-1
       continue-on-error: true
-      run: bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} inc_version:false inc_build:false update_deps:false skip_publish:true skip_tests:${{ inputs.skip_tests }} clear_artifacts:false
+      run: ${{ github.action_path }}/../shared-scripts/queued.sh bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} inc_version:false inc_build:false update_deps:false skip_publish:true skip_tests:${{ inputs.skip_tests }} clear_artifacts:false
       shell: bash -leo pipefail {0}
       if: ${{ steps.build-app.outcome == 'failure' && env.RETRY_BUILD == 'true' }}
     - name: Abort Workflow (Non-recoverable build error)
@@ -92,7 +92,7 @@ runs:
     - name: Build and Upload App (Retry 2)
       id: retry-build-app-2
       continue-on-error: true
-      run: bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} inc_version:false inc_build:false update_deps:false skip_publish:true skip_tests:${{ inputs.skip_tests }} clear_artifacts:false
+      run: ${{ github.action_path }}/../shared-scripts/queued.sh bundle exec fastlane ${{ inputs.platform }} ${{ inputs.lane }} inc_version:false inc_build:false update_deps:false skip_publish:true skip_tests:${{ inputs.skip_tests }} clear_artifacts:false
       shell: bash -leo pipefail {0}
       if: ${{ steps.retry-build-app-1.outcome == 'failure' && env.RETRY_BUILD == 'true' }}
     - name: Abort Workflow (Retry 1 Non-recoverable build error)

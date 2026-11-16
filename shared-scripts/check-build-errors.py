@@ -20,6 +20,7 @@ that and retries without destructive recovery.
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 
@@ -335,14 +336,19 @@ def set_destination_udid(udid):
 
 
 def regenerate_project_without_binary_cache():
-    """Regenerate through the repository entry point, with a Tuist fallback."""
+    """Regenerate through the repository entry point, with a Tuist fallback.
+
+    Generation builds, so it goes through `queued.sh` like every build command in the actions
+    (PL-480); `tuist install` only resolves dependencies and stays unqueued.
+    """
+    queued = shlex.quote(os.path.join(os.path.dirname(os.path.abspath(__file__)), "queued.sh"))
     if os.path.isfile("generate.sh") and os.access("generate.sh", os.X_OK):
         print("Regenerating through generate.sh without using the binary cache")
-        return os.system("./generate.sh --no-binary-cache")
+        return os.system(f"{queued} ./generate.sh --no-binary-cache")
 
     if os.path.isfile("Tuist.swift"):
         print("Reinstalling Tuist dependencies and regenerating without warming the binary cache")
-        return os.system("tuist install && tuist generate --no-open")
+        return os.system(f"tuist install && {queued} tuist generate --no-open")
 
     return 0
 

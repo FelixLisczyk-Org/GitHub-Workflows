@@ -46,12 +46,12 @@ runs:
         if [[ -n "$SUBMISSION_BUILD" ]]; then
           args+=("build_number:$SUBMISSION_BUILD")
         fi
-        bundle exec fastlane "$SUBMISSION_PLATFORM" "$SUBMISSION_LANE" "${args[@]}"
+        ${{ github.action_path }}/../shared-scripts/queued.sh bundle exec fastlane "$SUBMISSION_PLATFORM" "$SUBMISSION_LANE" "${args[@]}"
       shell: bash -leo pipefail {0}
     - name: Set Git Version Tag
       if: ${{ inputs.set_git_tag && inputs.git_tag_version_target != '' && inputs.git_tag_suffix != '' }}
       run: |
-        ./generate.sh --no-binary-cache
-        bundle exec fastlane ${{ inputs.platform }} add_git_version_tag target:"${{ inputs.git_tag_version_target }}" suffix:"${{ inputs.git_tag_suffix }}"
+        ${{ github.action_path }}/../shared-scripts/queued.sh ./generate.sh --no-binary-cache
+        ${{ github.action_path }}/../shared-scripts/queued.sh bundle exec fastlane ${{ inputs.platform }} add_git_version_tag target:"${{ inputs.git_tag_version_target }}" suffix:"${{ inputs.git_tag_suffix }}"
         git push --tags
       shell: bash -leo pipefail {0}

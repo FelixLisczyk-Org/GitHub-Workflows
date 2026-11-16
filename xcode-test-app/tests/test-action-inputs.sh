@@ -25,6 +25,10 @@ assert_count() {
 assert_contains 'reuse_generated_project:'
 assert_contains 'default: false'
 assert_contains 'same checkout/job'
-assert_count 3 'FASTLANE_REUSE_GENERATED_PROJECT=${{ inputs.reuse_generated_project }} bundle exec fastlane'
+# The flag travels in each step's `env:` rather than as a command prefix, so it reaches Fastlane
+# through the queue proxy, which forwards the step's environment but runs a single executable.
+assert_count 3 'FASTLANE_REUSE_GENERATED_PROJECT: ${{ inputs.reuse_generated_project }}'
+assert_count 3 'queued.sh bundle exec fastlane'
+assert_count 0 'FASTLANE_REUSE_GENERATED_PROJECT=${{'
 
 printf 'ok - reuse_generated_project is forwarded to all Fastlane invocations\n'
