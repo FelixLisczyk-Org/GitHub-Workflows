@@ -59,14 +59,35 @@ BUILD_TOOL_EXIT=65 PATH="${WORK}/queue-bin:${base_path}" "${WRAPPER}" build-tool
 [[ $? -eq 65 ]] || fail "queued exit status was not passed through"
 printf 'ok - the queued exit status is passed through\n'
 
-# Direct: no queue on PATH, so the stub must not run.
+# Direct: a GitHub-hosted runner has no queue on PATH, so the stub must not run.
 /bin/rm -f "${WORK}/arguments"
-output=$(PATH="${base_path}" "${WRAPPER}" build-tool direct) || fail "direct command failed"
+output=$(RUNNER_ENVIRONMENT=github-hosted PATH="${base_path}" "${WRAPPER}" build-tool direct) ||
+  fail "direct command failed"
 [[ "${output}" == "ran direct" ]] || fail "direct command printed ${output@Q}"
 [[ ! -e "${WORK}/arguments" ]] || fail "the queue was used although it is not on PATH"
-BUILD_TOOL_EXIT=3 PATH="${base_path}" "${WRAPPER}" build-tool >/dev/null
+BUILD_TOOL_EXIT=3 RUNNER_ENVIRONMENT=github-hosted PATH="${base_path}" "${WRAPPER}" build-tool >/dev/null
 [[ $? -eq 3 ]] || fail "direct exit status was not passed through"
-printf 'ok - without the queue the command runs directly with its exit status\n'
+printf 'ok - on a GitHub-hosted runner the command runs directly with its exit status\n'
+
+# Outside Actions (a local run) there is no RUNNER_ENVIRONMENT, and the command also runs directly.
+output=$(env -u RUNNER_ENVIRONMENT PATH="${base_path}" "${WRAPPER}" build-tool local) ||
+  fail "direct command outside Actions failed"
+[[ "${output}" == "ran local" ]] || fail "direct command outside Actions printed ${output@Q}"
+printf 'ok - outside GitHub Actions the command runs directly\n'
+
+# A self-hosted runner without the queue must refuse rather than build next to queued work.
+errors=$(RUNNER_ENVIRONMENT=self-hosted PATH="${base_path}" "${WRAPPER}" build-tool self-hosted 2>&1)
+status=$?
+[[ ${status} -eq 72 ]] || fail "a self-hosted runner without the queue exited ${status}, expected 72"
+[[ "${errors}" != *"ran self-hosted"* ]] || fail "a self-hosted runner without the queue built anyway"
+[[ "${errors}" == *"::error::"* ]] || fail "the refusal is not reported as a workflow error"
+printf 'ok - a self-hosted runner without the queue refuses to build\n'
+
+# With the queue present, a self-hosted runner goes through it as usual.
+RUNNER_ENVIRONMENT=self-hosted PATH="${WORK}/queue-bin:${base_path}" "${WRAPPER}" build-tool >/dev/null ||
+  fail "a self-hosted runner with the queue failed"
+[[ -e "${WORK}/arguments" ]] || fail "a self-hosted runner with the queue did not use it"
+printf 'ok - a self-hosted runner with the queue submits through it\n'
 
 PATH="${base_path}" "${WRAPPER}" 2>/dev/null
 [[ $? -eq 64 ]] || fail "a missing command was not rejected"
