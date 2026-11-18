@@ -70,6 +70,9 @@ inputs:
   model:
     description: "Model identifier. For most providers: provider/model-id. For ollama: model-name:cloud (e.g. kimi-k2.6:cloud)"
     default: "openrouter/anthropic/claude-opus-5.5"
+  fallback_model:
+    description: "Model to switch to when the primary model's account is out of credits (e.g. Anthropic BYOK credits used up on OpenRouter). Uses the same provider and API key. Set to an empty string to disable"
+    default: "openrouter/deepseek/deepseek-v4.1-flash-1017:floor"
 
 runs:
   using: "composite"
@@ -100,6 +103,7 @@ runs:
       env:
         PROVIDER: ${{ inputs.provider }}
         MODEL: ${{ inputs.model }}
+        FALLBACK_MODEL: ${{ inputs.fallback_model }}
         API_KEY: ${{ inputs.api_key }}
         PACKAGES_TOKEN: ${{ inputs.token }}
         PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number }}

@@ -21,6 +21,7 @@ trap 'rm -f "${CONTEXT_FILE:-}" "${GUIDELINES_FILE:-}" "${REVIEW_FILE:-}" "${REV
 echo "::group::AI Code Review Setup"
 echo "Provider: ${PROVIDER}"
 echo "Model: ${MODEL}"
+echo "Fallback model when out of credits: ${FALLBACK_MODEL:-none}"
 echo "PR: #${PR_NUMBER}"
 
 # --- Map API key to provider-specific environment variable ---
@@ -169,11 +170,17 @@ export OPENCODE_DISABLE_AUTOUPDATE=true
 # Keep headless reviews out of Clover so they do not trigger waiting notifications.
 export CLOVER_SKIP_SESSION=1
 
+# Writes the OpenCode config for the given model. Called once for the primary
+# model and again if the review falls back to FALLBACK_MODEL.
+#
 # Disable session-title generation so headless reviews do not make an auxiliary
 # model request. Pin the small model to the review model as a fallback in case
 # title generation is re-enabled later.
-if [ "${PROVIDER}" = "ollama" ]; then
-  export OPENCODE_CONFIG_CONTENT=$(cat <<JSONEOF
+configure_opencode() {
+  local model=$1
+
+  if [ "${PROVIDER}" = "ollama" ]; then
+    export OPENCODE_CONFIG_CONTENT=$(cat <<JSONEOF
 {
   "\$schema": "https://opencode.ai/config.json",
   "agent": {
@@ -193,19 +200,33 @@ if [ "${PROVIDER}" = "ollama" ]; then
         "apiKey": "${API_KEY}"
       },
       "models": {
-        "${MODEL}": { "name": "${MODEL}" }
+        "${model}": { "name": "${model}" }
       }
     }
   },
-  "model": "ollama/${MODEL}",
-  "small_model": "ollama/${MODEL}"
+  "model": "ollama/${model}",
+  "small_model": "ollama/${model}"
 }
 JSONEOF
 )
-elif [ "${PROVIDER}" = "openrouter" ]; then
-  OPENROUTER_MODEL="${MODEL#openrouter/}"
+  elif [ "${PROVIDER}" = "openrouter" ]; then
+    local openrouter_model="${model#openrouter/}"
 
-  export OPENCODE_CONFIG_CONTENT=$(cat <<JSONEOF
+    # Anthropic models are pinned to the Anthropic provider so they run on the
+    # BYOK Anthropic key. Any other model (e.g. the DeepSeek fallback) is left to
+    # OpenRouter's default routing — pinning it to Anthropic would leave it
+    # with no provider at all.
+    local provider_routing=""
+    case "${openrouter_model}" in
+      anthropic/*)
+        provider_routing='"provider": {
+              "order": ["anthropic"],
+              "allow_fallbacks": false
+            },'
+        ;;
+    esac
+
+    export OPENCODE_CONFIG_CONTENT=$(cat <<JSONEOF
 {
   "\$schema": "https://opencode.ai/config.json",
   "agent": {
@@ -219,25 +240,22 @@ elif [ "${PROVIDER}" = "openrouter" ]; then
   "provider": {
     "openrouter": {
       "models": {
-        "${OPENROUTER_MODEL}": {
+        "${openrouter_model}": {
           "options": {
-            "provider": {
-              "order": ["anthropic"],
-              "allow_fallbacks": false
-            },
+            ${provider_routing}
             "reasoningEffort": "high"
           }
         }
       }
     }
   },
-  "model": "openrouter/${OPENROUTER_MODEL}",
-  "small_model": "openrouter/${OPENROUTER_MODEL}"
+  "model": "openrouter/${openrouter_model}",
+  "small_model": "openrouter/${openrouter_model}"
 }
 JSONEOF
 )
-else
-  export OPENCODE_CONFIG_CONTENT=$(cat <<JSONEOF
+  else
+    export OPENCODE_CONFIG_CONTENT=$(cat <<JSONEOF
 {
   "\$schema": "https://opencode.ai/config.json",
   "agent": {
@@ -248,12 +266,13 @@ else
   "tools": {
     "bash": false
   },
-  "model": "${MODEL}",
-  "small_model": "${MODEL}"
+  "model": "${model}",
+  "small_model": "${model}"
 }
 JSONEOF
 )
-fi
+  fi
+}
 
 # --- Run OpenCode ---
 echo "::group::Running AI Code Review"
@@ -287,42 +306,77 @@ REVIEW_PROMPT="You are performing an AI code review on a pull request. Read the 
 
 REVIEW_HEADLINE_PATTERN='^## AI Code Review'
 MAX_REVIEW_ATTEMPTS=3
-REVIEW_COMPLETE=false
 
-for attempt in $(seq 1 "${MAX_REVIEW_ATTEMPTS}"); do
-  echo "Running OpenCode (attempt ${attempt}/${MAX_REVIEW_ATTEMPTS})..."
+# Errors meaning the account behind the model is out of money: Anthropic's
+# "credit balance is too low" (billing_error), an Anthropic spend cap
+# (enforced_spend_limit_reached), and OpenRouter's own "insufficient credits".
+# With BYOK, OpenRouter passes Anthropic's error through. Retrying the same
+# model cannot succeed, so these switch to FALLBACK_MODEL instead.
+OUT_OF_CREDITS_PATTERN='credit balance is too low|billing_error|enforced_spend_limit_reached|insufficient credits'
 
-  : > "${REVIEW_FILE}"
-  : > "${STDERR_FILE}"
+# Runs the review with the given model, retrying incomplete turns. Sets
+# REVIEW_RESULT to "complete", "out_of_credits", or "incomplete".
+run_review() {
+  local model=$1
+  REVIEW_RESULT=incomplete
 
-  opencode run \
-    "${REVIEW_PROMPT}" \
-    > "${REVIEW_FILE}" 2>"${STDERR_FILE}" || true
+  configure_opencode "${model}"
+  echo "Model: ${model}"
 
-  # Show stderr for debugging (visible in GitHub Actions logs)
-  if [ -s "${STDERR_FILE}" ]; then
-    echo "::warning::OpenCode stderr output:"
-    cat "${STDERR_FILE}"
-  fi
+  for attempt in $(seq 1 "${MAX_REVIEW_ATTEMPTS}"); do
+    echo "Running OpenCode (attempt ${attempt}/${MAX_REVIEW_ATTEMPTS})..."
 
-  if [ ! -s "${REVIEW_FILE}" ]; then
-    echo "::warning::OpenCode produced no review output (attempt ${attempt}/${MAX_REVIEW_ATTEMPTS})."
-  elif ! grep -q "${REVIEW_HEADLINE_PATTERN}" "${REVIEW_FILE}"; then
-    echo "::warning::OpenCode output has no '## AI Code Review' headline (attempt ${attempt}/${MAX_REVIEW_ATTEMPTS}). Discarding it as an incomplete turn."
-    echo "Discarded output (first 500 chars):"
-    head -c 500 "${REVIEW_FILE}"
-    echo
+    : > "${REVIEW_FILE}"
+    : > "${STDERR_FILE}"
+
+    opencode run \
+      "${REVIEW_PROMPT}" \
+      > "${REVIEW_FILE}" 2>"${STDERR_FILE}" || true
+
+    # Show stderr for debugging (visible in GitHub Actions logs)
+    if [ -s "${STDERR_FILE}" ]; then
+      echo "::warning::OpenCode stderr output:"
+      cat "${STDERR_FILE}"
+    fi
+
+    if grep -q "${REVIEW_HEADLINE_PATTERN}" "${REVIEW_FILE}"; then
+      echo "OpenCode produced a complete review on attempt ${attempt}."
+      REVIEW_RESULT=complete
+      return
+    fi
+
+    if grep -qiE "${OUT_OF_CREDITS_PATTERN}" "${STDERR_FILE}" "${REVIEW_FILE}"; then
+      echo "::warning::${model} is out of credits (attempt ${attempt}/${MAX_REVIEW_ATTEMPTS})."
+      REVIEW_RESULT=out_of_credits
+      return
+    fi
+
+    if [ ! -s "${REVIEW_FILE}" ]; then
+      echo "::warning::OpenCode produced no review output (attempt ${attempt}/${MAX_REVIEW_ATTEMPTS})."
+    else
+      echo "::warning::OpenCode output has no '## AI Code Review' headline (attempt ${attempt}/${MAX_REVIEW_ATTEMPTS}). Discarding it as an incomplete turn."
+      echo "Discarded output (first 500 chars):"
+      head -c 500 "${REVIEW_FILE}"
+      echo
+    fi
+
+    if [ "${attempt}" -lt "${MAX_REVIEW_ATTEMPTS}" ]; then
+      echo "Retrying in 10s..."
+      sleep 10
+    fi
+  done
+}
+
+run_review "${MODEL}"
+
+if [ "${REVIEW_RESULT}" = "out_of_credits" ]; then
+  if [ -n "${FALLBACK_MODEL:-}" ] && [ "${FALLBACK_MODEL}" != "${MODEL}" ]; then
+    echo "::warning::Switching to fallback model ${FALLBACK_MODEL} because ${MODEL} is out of credits."
+    run_review "${FALLBACK_MODEL}"
   else
-    echo "OpenCode produced a complete review on attempt ${attempt}."
-    REVIEW_COMPLETE=true
-    break
+    echo "::warning::No fallback model configured."
   fi
-
-  if [ "${attempt}" -lt "${MAX_REVIEW_ATTEMPTS}" ]; then
-    echo "Retrying in 10s..."
-    sleep 10
-  fi
-done
+fi
 
 echo "::endgroup::"
 
@@ -330,8 +384,8 @@ echo "::endgroup::"
 # Nothing is posted unless a complete review was produced. Posting an incomplete
 # turn leaves preamble noise on the PR and, worse, no marker for the dedup check
 # above, so every re-run would pile on another junk comment.
-if [ "${REVIEW_COMPLETE}" != "true" ]; then
-  echo "::warning::OpenCode did not produce a complete review after ${MAX_REVIEW_ATTEMPTS} attempts. Nothing posted."
+if [ "${REVIEW_RESULT}" != "complete" ]; then
+  echo "::warning::OpenCode did not produce a complete review (${REVIEW_RESULT}). Nothing posted."
   exit 1
 fi
 
