@@ -310,9 +310,11 @@ MAX_REVIEW_ATTEMPTS=3
 # Errors meaning the account behind the model is out of money: Anthropic's
 # "credit balance is too low" (billing_error), an Anthropic spend cap
 # (enforced_spend_limit_reached), and OpenRouter's own "insufficient credits".
-# With BYOK, OpenRouter passes Anthropic's error through. Retrying the same
-# model cannot succeed, so these switch to FALLBACK_MODEL instead.
-OUT_OF_CREDITS_PATTERN='credit balance is too low|billing_error|enforced_spend_limit_reached|insufficient credits'
+# With BYOK, OpenRouter passes on only Anthropic's message, not its error code,
+# so the spend cap shows up as "You have reached your specified API usage
+# limits". Retrying the same model cannot succeed, so these switch to
+# FALLBACK_MODEL instead.
+OUT_OF_CREDITS_PATTERN='credit balance is too low|billing_error|enforced_spend_limit_reached|API usage limits|insufficient credits'
 
 # Runs the review with the given model, retrying incomplete turns. Sets
 # REVIEW_RESULT to "complete", "out_of_credits", or "incomplete".
